@@ -6,4 +6,4 @@
 - 構成は固定：Cloudflare Workers / D1 / R2。これ以外を使うときは社長に確認
 - AIは当社名義の Anthropic API 契約のみ
 - `wrangler deploy` は社長が指示したときだけ
-- 仕様書：Obsidian `30_Areas/AI番頭_仕様書v1（ハッカソン）.md`
+- 仕様書：Obsidian `30_Areas/Claudeハッカソン2026/AI番頭_仕様書v1（ハッカソン）.md`
