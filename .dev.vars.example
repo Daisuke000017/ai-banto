@@ -1,3 +1,6 @@
 # 手元で動かすときは、このファイルを .dev.vars にコピーして値を入れる（.dev.vars はGitに入らない）
 # 本番の値は `wrangler secret put ANTHROPIC_API_KEY` で Cloudflare の Secrets に入れる
 ANTHROPIC_API_KEY=
+# 玄関の暗証番号（デモでは架空の数字を入れる）。データベースには保存せず、コピー時・当日の表示時だけ差し込む
+# 本番は `wrangler secret put DOOR_CODE`
+DOOR_CODE=
