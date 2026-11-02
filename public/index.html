@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI番頭</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <p class="brand">AI番頭</p>
+      <h1 id="inn-name" class="inn">読み込み中</h1>
+      <p class="today">デモの今日：<span id="today">—</span></p>
+    </div>
+    <ul class="team" id="team" aria-label="チーム">
+      <li data-role="banto">番頭</li>
+      <li data-role="keiri">経理担当</li>
+      <li data-role="kansa">監査役</li>
+      <li data-role="shukuhaku">宿泊担当</li>
+      <li data-role="kikaku">経営企画</li>
+    </ul>
+    <p class="team-note" id="team-note" aria-live="polite">数字はプログラムが数え、文はチームが下書きします。</p>
+  </header>
+
+  <nav class="tabs" aria-label="画面の切り替え">
+    <button type="button" class="tab" data-tab="tax" aria-selected="true">宿泊税</button>
+    <button type="button" class="tab" data-tab="minpaku" aria-selected="false">民泊の手続き</button>
+    <button type="button" class="tab" data-tab="guest" aria-selected="false">ゲスト連絡</button>
+  </nav>
+
+  <main>
+    <section id="panel-tax" class="panel" aria-label="宿泊税"></section>
+    <section id="panel-minpaku" class="panel" aria-label="民泊の手続き" hidden></section>
+    <section id="panel-guest" class="panel" aria-label="ゲスト連絡" hidden></section>
+  </main>
+
+  <footer class="notes">
+    <ul>
+      <li>下書きです。確認と提出・送信はご本人が行います</li>
+      <li>デモのデータはすべて架空です</li>
+      <li>AIの処理は米国のAnthropic社で行います</li>
+    </ul>
+  </footer>
+  <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
+</body>
+</html>

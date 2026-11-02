@@ -5,6 +5,8 @@
 // - /api/minpaku/report?period=         定期報告の4項目（例：2026-08_09）
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文
+// - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
+// - それ以外の GET                       画面（public/）を返す
 // 書く（POST・JSONだけ・同じ画面からだけ）
 // - /api/drafts                         到着前案内をつくる {reservation_id}
 // - /api/drafts/:id                     確認済みにする {action:"ok"}／手で直す {action:"edit", draft_template}
@@ -12,7 +14,7 @@
 // - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる）
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
-import { dayCounter, minpakuReport, reportPeriodOf, rulesFromInnProfile, taxDraft } from "./lib/counting.js";
+import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
@@ -28,10 +30,23 @@ import {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_BODY_BYTES = 10_000;
+// 書体（BIZ UDPGothic）だけ Google Fonts から読む。スクリプトは自分の画面のものだけ
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
 const SECURITY_HEADERS = {
   "cache-control": "no-store",
   "x-content-type-options": "nosniff",
-  "content-security-policy": "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'",
+  "content-security-policy": CSP,
+  "referrer-policy": "no-referrer",
 };
 const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body, null, 2), {
@@ -134,6 +149,30 @@ async function handleGet(url, env, today) {
     const period = url.searchParams.get("period") ?? reportPeriodOf(monthOf(today));
     const { results } = await env.DB.prepare(RES_SELECT).all();
     return json({ today, ...minpakuReport(results, period, today) });
+  }
+  if (p === "/api/reservations") {
+    // これからの予約（今日より後に出発する・取り消していない）。名前は読まない
+    const inn = await loadInn(env);
+    const { results } = await env.DB.prepare(
+      `SELECT r.id, r.ota, r.checkin_date, r.checkout_date, r.adults, r.children, r.infants, r.language,
+        (SELECT status FROM guest_drafts d WHERE d.reservation_id = r.id AND d.kind = 'arrival' ORDER BY d.id DESC LIMIT 1) AS draft_status
+       FROM reservations r WHERE r.status = 'confirmed' AND r.checkout_date > ? ORDER BY r.checkin_date, r.id`,
+    )
+      .bind(today)
+      .all();
+    return json({
+      today,
+      inn_name: inn.name ?? null,
+      reservations: results.map((r) => ({
+        id: r.id,
+        ota: r.ota,
+        checkin_date: r.checkin_date,
+        checkout_date: r.checkout_date,
+        guests: headcount({ adults: r.adults ?? 0, children: r.children ?? 0, infants: r.infants ?? 0 }),
+        language: normLang(r.language),
+        draft_status: r.draft_status ?? null,
+      })),
+    });
   }
   if (p === "/api/drafts") {
     const r = await loadReservation(env, url.searchParams.get("reservation_id"));
@@ -249,6 +288,15 @@ async function handleGuest(url, env, today, token) {
   );
 }
 
+// 画面のファイル（public/）。安全のヘッダーを付けて返す
+async function serveAsset(request, env) {
+  if (!env.ASSETS) return json({ error: "見つかりません" }, 404);
+  const res = await env.ASSETS.fetch(request);
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -260,6 +308,7 @@ export default {
         if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
         return await handleGuest(url, env, today, g[1]);
       }
+      if (request.method === "GET" && !url.pathname.startsWith("/api/")) return await serveAsset(request, env);
       if (request.method === "GET") {
         const res = await handleGet(url, env, today);
         if (res) return res;
