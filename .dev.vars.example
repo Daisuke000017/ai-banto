@@ -1,0 +1,3 @@
+# 手元で動かすときは、このファイルを .dev.vars にコピーして値を入れる（.dev.vars はGitに入らない）
+# 本番の値は `wrangler secret put ANTHROPIC_API_KEY` で Cloudflare の Secrets に入れる
+ANTHROPIC_API_KEY=

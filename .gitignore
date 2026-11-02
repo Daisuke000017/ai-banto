@@ -1,0 +1,28 @@
+# --- 秘密情報（絶対にコミットしない） ---
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+.claude/settings.local.json
+
+# --- Cloudflare / Node ---
+.wrangler/
+node_modules/
+dist/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- 本物のデータ（公開リポジトリには架空データだけ） ---
+data/private/
+*.real.csv
+
+# --- その他 ---
+.DS_Store
+*.log
