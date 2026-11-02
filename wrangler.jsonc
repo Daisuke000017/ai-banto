@@ -1,0 +1,17 @@
+{
+  // AI番頭（Cloudflare Workers）。いまは手元（--local）だけで動かす。公開は社長の指示があったときだけ。
+  "name": "ai-banto",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    // デモの「今日」。撮影の日付に関係なく、画面の数字が同じになるように固定する
+    "DEMO_TODAY": "2026-10-10"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ai-banto",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

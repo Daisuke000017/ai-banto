@@ -1,0 +1,12 @@
+{
+  "name": "ai-banto",
+  "private": true,
+  "type": "module",
+  "description": "AI番頭：民泊オーナーのバックオフィス支援（Built with Claude: Japan 2026）",
+  "scripts": {
+    "test": "node --test",
+    "seed:build": "node scripts/build-seed.js",
+    "db:reset": "npm run seed:build && npx -y wrangler@4 d1 migrations apply ai-banto --local && npx -y wrangler@4 d1 execute ai-banto --local --file seed/demo.sql",
+    "dev": "npx -y wrangler@4 dev --local"
+  }
+}
