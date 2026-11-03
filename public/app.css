@@ -173,6 +173,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
+  max-width: 100%;
 }
 
 /* 表 */
@@ -309,3 +310,26 @@ textarea {
   td .sub-ota { display: block; }
   th, td { padding: var(--s2) var(--s1); }
 }
+
+/* 予約メール（M17） */
+.text-in {
+  width: 100%;
+  min-height: 44px;
+  margin-top: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  font-size: 15px;
+}
+textarea.mail-body { min-height: 220px; }
+.mail-list { display: grid; gap: var(--s3); margin-top: var(--s3); }
+.mail-card { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); scroll-margin-top: var(--s4); }
+.mail-card h3 { font-size: 16px; line-height: 1.5; }
+.mail-masked { margin-top: var(--s3); font-size: 13px; color: var(--mask); }
+.checks li.chk-block { background: var(--danger-bg); color: var(--danger); }
+.checks li.chk-warn { background: var(--warn-bg); color: var(--warn); }
+tr.changed td:last-child { font-weight: 700; color: var(--action); }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s4); margin-top: var(--s3); }
+.field label { display: block; font-size: 14px; color: var(--ink-sub); }
+.field .text-in, .field select { margin-top: var(--s1); width: 100%; }

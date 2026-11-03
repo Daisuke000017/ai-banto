@@ -12,11 +12,28 @@
 // - /api/drafts/:id                     確認済みにする {action:"ok"}／手で直す {action:"edit", draft_template}
 // - /api/drafts/:id/copy                コピー用の文（暗証番号・住所を入れる。保存しない）
 // - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる）
+// 予約メール（M17・貼り付け版）
+// - GET  /api/booking-emails?status=pending|done   確認待ち／決めたもの（伏せた本文だけ）
+// - GET  /api/booking-emails/samples                デモ用の見本メール
+// - POST /api/booking-emails                        貼り付けたメールを読む {subject, body}（伏せる前の本文は保存しない）
+// - POST /api/booking-emails/:id/confirm            OK＝台帳に入れる {fields?}（直した値）
+// - POST /api/booking-emails/:id/edit               直す {fields}（確認待ちのまま。台帳は変えない）
+// - POST /api/booking-emails/:id/reject             捨てる
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
-import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, taxDraft } from "./lib/counting.js";
+import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
 import { makeClient } from "./lib/anthropic.js";
+import {
+  confirmBookingEmail,
+  editBookingEmail,
+  intakeBookingEmail,
+  listBookingEmails,
+  loadBookingEmail,
+  MAX_EMAIL_CHARS,
+  rejectBookingEmail,
+} from "./lib/booking-email.js";
+import { sampleEmails } from "../seed/demo-booking-emails.js";
 import {
   checkTemplateEdit,
   fillPlaceholders,
@@ -30,6 +47,7 @@ import {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_BODY_BYTES = 10_000;
+const MAX_MAIL_BODY_BYTES = 60_000; // 予約メールの貼り付けだけ大きめ（日本語12,000字まで）
 // 書体（BIZ UDPGothic）だけ Google Fonts から読む。スクリプトは自分の画面のものだけ
 const CSP = [
   "default-src 'self'",
@@ -79,13 +97,13 @@ async function loadReservation(env, id) {
 }
 
 // 書く操作の入口：JSONだけ・同じ画面（Origin）からだけ・大きすぎる中身は断る
-async function readJsonBody(request, url) {
+async function readJsonBody(request, url, maxBytes = MAX_BODY_BYTES) {
   if (request.headers.get("origin") !== url.origin) throw new HttpError(403, "この画面からの操作だけ受け付けます");
   if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
     throw new HttpError(415, "JSONで送ってください");
   }
   const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) throw new HttpError(413, "中身が大きすぎます");
+  if (new TextEncoder().encode(text).length > maxBytes) throw new HttpError(413, "中身が大きすぎます");
   try {
     const body = JSON.parse(text);
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
@@ -133,6 +151,7 @@ const nowIso = (env) => (env.DEMO_TODAY ? `${env.DEMO_TODAY}T09:00:00+09:00` : n
 
 async function handleGet(url, env, today) {
   const p = url.pathname;
+  if (p.startsWith("/api/booking-emails")) return handleBookingEmailGet(url, env);
   if (p === "/api/tax") {
     const month = url.searchParams.get("month") ?? monthOf(today);
     if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
@@ -288,6 +307,56 @@ async function handleGuest(url, env, today, token) {
   );
 }
 
+// 予約メール（M17）：読む
+async function handleBookingEmailGet(url, env) {
+  if (url.pathname === "/api/booking-emails/samples") {
+    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    return json({ samples: sampleEmails.map((e) => ({ key: e.key, label: e.label, subject: e.subject, body: e.body })) });
+  }
+  if (url.pathname === "/api/booking-emails") {
+    const status = url.searchParams.get("status") === "done" ? "done" : "pending";
+    return json({ status, emails: await listBookingEmails(env.DB, { status, now: nowIso(env) }) });
+  }
+  return null;
+}
+
+// 予約メール（M17）：書く
+async function handleBookingEmailPost(request, url, env, today) {
+  const p = url.pathname;
+  const body = await readJsonBody(request, url, p === "/api/booking-emails" ? MAX_MAIL_BODY_BYTES : MAX_BODY_BYTES);
+
+  if (p === "/api/booking-emails") {
+    const subject = typeof body.subject === "string" ? body.subject : "";
+    const text = typeof body.body === "string" ? body.body : "";
+    if (!text.trim()) throw new HttpError(400, "メールの本文を貼り付けてください");
+    if (subject.length > 300) throw new HttpError(400, "件名が長すぎます");
+    if (text.length > MAX_EMAIL_CHARS) {
+      throw new HttpError(413, `本文が長すぎます（${MAX_EMAIL_CHARS.toLocaleString("en-US")}字まで）。予約の部分だけを貼り付けてください`);
+    }
+    let client = null;
+    try {
+      client = makeClient(env);
+    } catch {
+      client = null; // 鍵がない → 手で入れる
+    }
+    const view = await intakeBookingEmail({ client, db: env.DB, subject, body: text, today, now: nowIso(env) });
+    return json(view, 201);
+  }
+
+  const m = p.match(/^\/api\/booking-emails\/(\d+)\/(confirm|edit|reject)$/);
+  if (!m) return null;
+  const row = await loadBookingEmail(env.DB, Number(m[1]));
+  if (!row) throw new HttpError(404, "予約メールが見つかりません");
+  const r =
+    m[2] === "confirm"
+      ? await confirmBookingEmail(env.DB, row, body.fields ?? null, { now: nowIso(env), stayNightRows })
+      : m[2] === "edit"
+        ? await editBookingEmail(env.DB, row, body.fields ?? null)
+        : await rejectBookingEmail(env.DB, row, { now: nowIso(env) });
+  if (r.error) throw new HttpError(r.status, r.error);
+  return json(r);
+}
+
 // 画面のファイル（public/）。安全のヘッダーを付けて返す
 async function serveAsset(request, env) {
   if (!env.ASSETS) return json({ error: "見つかりません" }, 404);
@@ -314,6 +383,9 @@ export default {
         if (res) return res;
       } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links")) {
         const res = await handlePost(request, url, env);
+        if (res) return res;
+      } else if (request.method === "POST" && url.pathname.startsWith("/api/booking-emails")) {
+        const res = await handleBookingEmailPost(request, url, env, today);
         if (res) return res;
       } else {
         return json({ error: "この操作は受け付けていません" }, 405);

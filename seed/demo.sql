@@ -1,5 +1,6 @@
 -- 自動生成（npm run seed:build）。手で直さず seed/demo-reservations.js を直す。
 -- 中身はすべて架空データ。
+DELETE FROM booking_emails;
 DELETE FROM stay_nights;
 DELETE FROM tax_drafts;
 DELETE FROM minpaku_reports;

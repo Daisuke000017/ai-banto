@@ -382,12 +382,12 @@ async function openDraft(id, scroll = false) {
 }
 
 let teamTimer = null;
-function teamWorking(onStep) {
-  const steps = [
-    [["banto"], "番頭が予約と宿の決まりをまとめています"],
-    [["shukuhaku"], "宿泊担当が到着案内の下書きを書いています"],
-    [["kansa"], "監査役とプログラムが、数字と決まりに合っているか確かめています"],
-  ];
+const DRAFT_STEPS = [
+  [["banto"], "番頭が予約と宿の決まりをまとめています"],
+  [["shukuhaku"], "宿泊担当が到着案内の下書きを書いています"],
+  [["kansa"], "監査役とプログラムが、数字と決まりに合っているか確かめています"],
+];
+function teamWorking(onStep, steps = DRAFT_STEPS) {
   let i = 0;
   const show = () => {
     team(...steps[i]);
@@ -603,9 +603,283 @@ async function showGuestListOnly() {
   }
 }
 
+// ---- 予約メール（M17） ----
+// 貼り付ける → 伏せてから番頭が書き写す → プログラムが本文・台帳と照らす → オーナーが OK／直す／捨てる。
+// 台帳を書きかえるのは OK のときだけ。
+
+const KIND = { new: "新しい予約", change: "予約の変更", cancel: "キャンセル", unknown: "種類が分からない" };
+const OTA_ALL = { ...OTA, unknown: "分からない" };
+const MASKED_JA = { name: "名前", email: "メール", phone: "電話", address: "住所", passport: "旅券番号", url: "リンク" };
+const READ_STEPS = [
+  [["banto"], "名前や連絡先を伏せてから、番頭がメールを読んでいます"],
+  [["kansa"], "監査役とプログラムが、本文と台帳に合っているか確かめています"],
+];
+
+// 年が今年でなければ年も出す
+function jpDateY(iso) {
+  if (!iso) return "空";
+  const y = iso.slice(0, 4);
+  return `${state.today && y !== state.today.slice(0, 4) ? `${Number(y)}年` : ""}${jpDate(iso)}`;
+}
+const people = (f) => {
+  if (f.adults == null && f.children == null && f.infants == null) return "空";
+  const parts = [`大人${f.adults ?? "？"}人`];
+  if (f.children) parts.push(`子ども${f.children}人`);
+  if (f.infants) parts.push(`乳幼児${f.infants}人`);
+  return parts.join("・");
+};
+const money = (n) => (n == null ? "空" : `${yen(n)}円`);
+
+async function showMail() {
+  const p = $("panel-mail");
+  p.replaceChildren(loading("予約メールを読んでいます"));
+  try {
+    const [pending, done] = await Promise.all([api("/api/booking-emails"), api("/api/booking-emails?status=done")]);
+    const hasPending = pending.emails.length > 0;
+    const list = el("div", { cls: "mail-list" });
+    if (!hasPending) list.append(el("p", { cls: "state", text: "確認待ちの予約メールはありません。上に貼り付けると、ここに出ます" }));
+    pending.emails.forEach((m, i) => list.append(mailCard(m, i === 0)));
+    p.replaceChildren(
+      pasteCard(!hasPending),
+      el("article", { cls: "card" }, [
+        el("h2", { text: `確認待ち（${pending.emails.length}件）` }),
+        el("p", { cls: "lead", text: "番頭が書き写した内容です。OK を押すまで、台帳は変わりません" }),
+        list,
+      ]),
+      doneCard(done.emails),
+    );
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showMail));
+  }
+}
+
+function pasteCard(primary) {
+  const subject = el("input", { cls: "text-in", attrs: { type: "text", maxlength: "300", "aria-label": "件名", placeholder: "件名（なくても読めます）" } });
+  const body = el("textarea", { cls: "mail-body", attrs: { "aria-label": "メールの本文", maxlength: "12000", placeholder: "予約サイトから届いたメールの本文を、ここに貼り付けてください" } });
+  const msg = el("div");
+  const pick = el("div", { cls: "pick", attrs: { hidden: true } });
+  const go = btn("番頭に読ませる", read, primary ? "btn primary" : "btn");
+
+  // デモのときだけ、見本のメールを選べる
+  api("/api/booking-emails/samples")
+    .then((d) => {
+      const sel = el("select", { attrs: { id: "mail-sample" } }, [el("option", { text: "選んでください", attrs: { value: "" } })]);
+      for (const s of d.samples) sel.append(el("option", { text: s.label, attrs: { value: s.key } }));
+      sel.addEventListener("change", () => {
+        const s = d.samples.find((x) => x.key === sel.value);
+        if (!s) return;
+        subject.value = s.subject;
+        body.value = s.body;
+      });
+      pick.replaceChildren(el("label", { text: "見本を入れる（デモ）", attrs: { for: "mail-sample" } }), sel);
+      pick.hidden = false;
+    })
+    .catch(() => {});
+
+  async function read() {
+    if (!body.value.trim()) {
+      msg.replaceChildren(el("p", { cls: "notice warn", text: "メールの本文を貼り付けてください" }));
+      body.focus();
+      return;
+    }
+    go.disabled = true;
+    teamWorking((note) => msg.replaceChildren(loading(`${note}（10秒ほど）`)), READ_STEPS);
+    try {
+      const m = await api("/api/booking-emails", { method: "POST", body: { subject: subject.value, body: body.value } });
+      teamDone(m.read_by === "ai" ? "番頭が読みました。内容を見て OK を押してください" : "番頭（AI）が使えなかったので、「直す」で入れてください");
+      await showMail();
+      document.querySelector("#panel-mail .mail-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      teamDone();
+      go.disabled = false;
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  }
+
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "予約メールを貼り付ける" }),
+    el("p", { cls: "lead", text: "名前・メール・電話・住所・リンクは、番頭が読む前に伏せます。伏せる前の本文は保存しません" }),
+    pick,
+    subject,
+    body,
+    msg,
+    el("div", { cls: "btns" }, [go]),
+  ]);
+}
+
+function mailCard(m, primary) {
+  const f = m.fields;
+  const card = el("article", { cls: "mail-card", attrs: { id: `mail-${m.id}` } });
+  const body = el("div");
+  const actions = el("div", { cls: "btns" });
+  const msg = el("div");
+  card.append(body, actions, msg);
+
+  function viewMode() {
+    msg.replaceChildren();
+    const head = el("div", { cls: "card-head" }, [
+      el("h3", { text: `${KIND[f.kind]}・${OTA_ALL[f.ota] ?? f.ota}` }),
+      m.blocked
+        ? el("span", { cls: "pill danger", text: "このままでは入れられません" })
+        : el("span", { cls: "pill warn", text: "確認待ち" }),
+    ]);
+    const nights = m.nights != null ? `（${m.nights}泊）` : "";
+    const kv = el("dl", { cls: "kv" }, [
+      el("dt", { text: "予約番号" }), el("dd", { text: f.reservation_no ?? "空" }),
+      el("dt", { text: "日程" }), el("dd", { text: `${jpDateY(f.checkin_date)} → ${jpDateY(f.checkout_date)}${nights}` }),
+      el("dt", { text: "人数" }), el("dd", { text: people(f) }),
+      el("dt", { text: "金額（参考）" }), el("dd", { text: money(f.amount) }),
+    ]);
+    const parts = [head, kv];
+    if (m.current) parts.push(beforeAfter(m));
+    else if (m.after && f.kind === "new") parts.push(el("p", { cls: "notice info", text: "OK を押すと、台帳に1行増えます" }));
+    parts.push(checkList(m));
+    if (m.masked_counts) {
+      const c = Object.entries(m.masked_counts).filter(([, n]) => n > 0).map(([k, n]) => `${MASKED_JA[k] ?? k}${n}`);
+      if (c.length) parts.push(el("p", { cls: "mail-masked", text: `番頭が読む前に伏せたもの：${c.join("・")}` }));
+    }
+    if (m.masked_body) {
+      parts.push(el("details", {}, [el("summary", { text: "番頭が読んだ文（伏せたあと）" }), el("div", { cls: "draft-text", text: m.masked_body })]));
+    }
+    body.replaceChildren(...parts);
+    const ok = btn("OK", doOk, primary ? "btn primary" : "btn");
+    ok.disabled = !!m.blocked;
+    actions.replaceChildren(ok, btn("直す", editMode), btn("捨てる", doReject));
+  }
+
+  function editMode() {
+    const inputs = {};
+    const sel = (k, map) => {
+      const s = el("select", { attrs: { id: `f-${m.id}-${k}` } });
+      for (const [v, label] of Object.entries(map)) s.append(el("option", { text: label, attrs: { value: v, selected: f[k] === v } }));
+      return (inputs[k] = s);
+    };
+    const inp = (k, type, extra = {}) => {
+      const i = el("input", { cls: "text-in", attrs: { id: `f-${m.id}-${k}`, type, ...extra } });
+      i.value = f[k] ?? "";
+      return (inputs[k] = i);
+    };
+    const row = (k, label, control) => el("div", { cls: "field" }, [el("label", { text: label, attrs: { for: `f-${m.id}-${k}` } }), control]);
+    const problems = el("div");
+    body.replaceChildren(
+      el("h3", { text: "番頭が書き写した内容を直す" }),
+      el("p", { cls: "lead", text: "空のままの項目は、空のままになります。直したあと、もう一度確かめてから OK を押します" }),
+      el("div", { cls: "fields" }, [
+        row("kind", "種類", sel("kind", KIND)),
+        row("ota", "予約サイト", sel("ota", { airbnb: OTA.airbnb, booking: OTA.booking, rakuten: OTA.rakuten, direct: OTA.direct, unknown: OTA_ALL.unknown })),
+        row("reservation_no", "予約番号", inp("reservation_no", "text", { maxlength: "40" })),
+        row("checkin_date", "チェックイン", inp("checkin_date", "date")),
+        row("checkout_date", "チェックアウト", inp("checkout_date", "date")),
+        row("adults", "大人", inp("adults", "number", { min: "0", max: "50", inputmode: "numeric" })),
+        row("children", "子ども", inp("children", "number", { min: "0", max: "50", inputmode: "numeric" })),
+        row("infants", "乳幼児", inp("infants", "number", { min: "0", max: "50", inputmode: "numeric" })),
+        row("amount", "金額（参考・円）", inp("amount", "number", { min: "0", inputmode: "numeric" })),
+      ]),
+      problems,
+    );
+    actions.replaceChildren(
+      btn("直す", async () => {
+        const fields = {};
+        for (const [k, i] of Object.entries(inputs)) fields[k] = i.value;
+        try {
+          const r = await api(`/api/booking-emails/${m.id}/edit`, { method: "POST", body: { fields } });
+          toast("直しました。もう一度見て OK を押してください");
+          m = r.email;
+          Object.assign(f, m.fields);
+          viewMode();
+          card.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (err) {
+          problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+        }
+      }, "btn primary"),
+      btn("やめる", viewMode),
+    );
+    inputs.kind.focus();
+  }
+
+  async function doOk() {
+    for (const b of actions.querySelectorAll("button")) b.disabled = true;
+    try {
+      const r = await api(`/api/booking-emails/${m.id}/confirm`, { method: "POST", body: {} });
+      // 台帳が変わったので、ほかのタブは次に開いたときに読み直す
+      state.loaded = { mail: true };
+      toast(r.note);
+      await showMail();
+    } catch (err) {
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+      for (const b of actions.querySelectorAll("button")) b.disabled = false;
+    }
+  }
+
+  async function doReject() {
+    for (const b of actions.querySelectorAll("button")) b.disabled = true;
+    try {
+      await api(`/api/booking-emails/${m.id}/reject`, { method: "POST", body: {} });
+      toast("捨てました。台帳は変えていません");
+      await showMail();
+    } catch (err) {
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+      for (const b of actions.querySelectorAll("button")) b.disabled = false;
+    }
+  }
+
+  viewMode();
+  return card;
+}
+
+// 変更・キャンセル：台帳のいまと、OK のあと
+function beforeAfter(m) {
+  const c = m.current;
+  const a = m.after;
+  if (m.fields.kind === "cancel") {
+    return el("p", { cls: "notice info", text: `OK を押すと、台帳の予約（${jpDateY(c.checkin_date)} → ${jpDateY(c.checkout_date)}・${people(c)}）をキャンセルにします` });
+  }
+  const rows = [
+    ["日程", `${jpDateY(c.checkin_date)} → ${jpDateY(c.checkout_date)}（${c.nights}泊）`, a ? `${jpDateY(a.checkin_date)} → ${jpDateY(a.checkout_date)}（${nightsBetween(a.checkin_date, a.checkout_date)}泊）` : "—"],
+    ["人数", people(c), a ? people(a) : "—"],
+    ["金額", money(c.amount_gross), a ? money(a.amount_gross) : "—"],
+  ];
+  return el("div", { cls: "table-wrap" }, [
+    el("table", {}, [
+      el("thead", {}, [el("tr", {}, [el("th", { text: "" }), el("th", { text: "台帳のいま" }), el("th", { text: "OK のあと" })])]),
+      el("tbody", {}, rows.map(([k, x, y]) => el("tr", { cls: x !== y && a ? "changed" : "" }, [el("th", { text: k }), el("td", { text: x }), el("td", { text: y })]))),
+    ]),
+  ]);
+}
+
+function checkList(m) {
+  const items = [...(m.ledger ?? []), ...(m.checks ?? [])];
+  if (!items.length) return el("p", { cls: "notice ok", text: "本文と台帳で確かめました。おかしな所はありません" });
+  const mark = { block: "✖", warn: "⚠️", info: "✎" };
+  return el(
+    "ul",
+    { cls: "checks" },
+    items.map((i) => el("li", { cls: `chk-${i.level}` }, [el("span", { cls: "by", text: mark[i.level] ?? "・" }), i.text])),
+  );
+}
+
+function doneCard(emails) {
+  const rows = emails.slice(0, 10).map((m) => {
+    const f = m.fields;
+    const ok = m.status === "ok";
+    return el("div", { cls: "res" }, [
+      el("div", { cls: "res-main" }, [
+        el("p", { cls: "res-date", text: `${KIND[f.kind]}・${OTA_ALL[f.ota] ?? f.ota}` }),
+        el("p", { cls: "res-sub", text: `予約番号 ${f.reservation_no ?? "空"}・${jpDateY(f.checkin_date)} → ${jpDateY(f.checkout_date)}` }),
+      ]),
+      el("span", { cls: `pill ${ok ? "ok" : ""}`, text: ok ? "台帳に入れた" : "捨てた" }),
+    ]);
+  });
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "決めたもの" }),
+    el("p", { cls: "lead", text: "伏せた本文は、受け取ってから30日で消えます。書き写した内容は残ります" }),
+    rows.length ? el("div", { cls: "res-list" }, rows) : el("p", { cls: "state", text: "まだありません" }),
+  ]);
+}
+
 // ---- タブ ----
 
-const SHOW = { tax: showTax, minpaku: showMinpaku, guest: showGuest };
+const SHOW = { tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail };
 
 function selectTab(name) {
   for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
