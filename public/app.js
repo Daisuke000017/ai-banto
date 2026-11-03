@@ -397,7 +397,7 @@ function teamWorking(onStep) {
   teamTimer = setInterval(() => {
     i = Math.min(i + 1, steps.length - 1);
     show();
-  }, 6000);
+  }, 2500);
 }
 function teamDone(note) {
   clearInterval(teamTimer);
@@ -409,7 +409,7 @@ async function makeDraft(id) {
   const holder = $("draft-holder");
   for (const b of document.querySelectorAll(".res .btn")) b.disabled = true;
   holder.scrollIntoView({ behavior: "smooth", block: "start" });
-  teamWorking((note) => holder.replaceChildren(loading(`${note}（全部で30秒ほど）`)));
+  teamWorking((note) => holder.replaceChildren(loading(`${note}（全部で10〜20秒ほど）`)));
   try {
     const d = await api("/api/drafts", { method: "POST", body: { reservation_id: id } });
     teamDone(d.source === "ai" ? `下書きができました（確かめた回数：${d.attempts ?? 1}回）。内容を見て OK を押してください` : "AIが使えなかったので、決まった文で下書きしました。内容を見て OK を押してください");
