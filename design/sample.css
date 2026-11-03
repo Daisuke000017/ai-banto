@@ -19,7 +19,7 @@ html, body { margin: 0; }
 body {
   background: #FFFFFF;
   color: var(--ink);
-  font-family: "BIZ UDPGothic", sans-serif;
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
   font-size: 18px;
   line-height: 1.8;
   font-variant-numeric: tabular-nums;
@@ -221,3 +221,11 @@ ul, ol { list-style: none; }
 .keep-total dd { font-size: 28px; }
 .keep-total dd .unit { font-size: 16px; }
 .rules { border: 1px solid var(--line); }
+
+/* 書体 3案（見本だけ。決まったら body の font-family に入れる） */
+.phone.f-biz { font-family: "BIZ UDPGothic", sans-serif; }
+.phone.f-noto { font-family: "Noto Sans JP", sans-serif; }
+.phone.f-zen { font-family: "Zen Kaku Gothic New", sans-serif; }
+.font-card { margin-top: var(--s3); }
+.digits { margin: var(--s3) 0; font-size: 16px; color: var(--ink-sub); }
+.digits b { display: block; font-size: 28px; color: var(--ink); line-height: 1.5; white-space: nowrap; }
