@@ -46,15 +46,15 @@ function goodEnDraft() {
   return {
     greeting: "Welcome! We look forward to your stay.",
     sections: [
-      { key: "equipment", title: "Equipment", body: "Please ask the host how to use the equipment." },
-      { key: "transport", title: "Getting here", body: "Please ask the host about the best way to get here." },
+      { key: "equipment", title: "Equipment", body: "Please put things back where you found them." },
+      { key: "transport", title: "Getting here", body: "Please check your route before you leave." },
       { key: "noise", title: "Quiet hours", body: "Please keep quiet after 10 pm." },
       { key: "garbage", title: "Garbage", body: "Please sort your garbage and put it in the box at the entrance." },
       { key: "fire", title: "Fire safety", body: "Smoking is not allowed inside." },
-      { key: "evacuation", title: "Evacuation", body: "Please ask the host where to go in a disaster." },
+      { key: "evacuation", title: "Evacuation", body: "When you arrive, please check the exits and the way out." },
       { key: "checkin", title: "Check-in", body: "The address is {ADDRESS}. The key box code is {DOOR_CODE}." },
     ],
-    closing: "Have a nice trip!",
+    closing: "If you have any questions, please ask the host. Have a nice trip!",
   };
 }
 const withBody = (d, key, body) => ({ ...d, sections: d.sections.map((s) => (s.key === key ? { ...s, body } : s)) });
@@ -127,6 +127,14 @@ test("点検：税金のことを書いたら止める（taxi は止めない）
   assert.deepEqual(checkArrivalDraft(taxi, input), []);
 });
 
+test("点検：「ホストにお尋ねください」が2つ以上の項目に出たら止める（結びの1回はよい）", () => {
+  const input = buildArrivalInput(byId("R16"), inn);
+  const twice = withBody(withBody(goodEnDraft(), "equipment", "Please ask the host how to use the equipment."), "fire", "Please contact the host about fire safety.");
+  assert.ok(checkArrivalDraft(twice, input).some((x) => x.includes("closing に1回だけ")));
+  const once = withBody(goodEnDraft(), "equipment", "Please ask the host how to use the equipment.");
+  assert.deepEqual(checkArrivalDraft(once, input), []);
+});
+
 test("点検：URLを書いたら止める", () => {
   const d = withBody(goodEnDraft(), "transport", "See www.example.com for details.");
   assert.ok(checkArrivalDraft(d, buildArrivalInput(byId("R16"), inn)).some((x) => x.includes("URL")));
@@ -141,7 +149,7 @@ test("点検：項目が足りなければ止める", () => {
 test("点検：英語の予約に日本語で書いたら止める", () => {
   const d = {
     greeting: "ようこそ。お待ちしています。",
-    sections: goodEnDraft().sections.map((s) => ({ ...s, title: "ご案内", body: s.key === "checkin" ? "住所は{ADDRESS}、番号は{DOOR_CODE}です。" : "ホストにお尋ねください。" })),
+    sections: goodEnDraft().sections.map((s) => ({ ...s, title: "ご案内", body: s.key === "checkin" ? "住所は{ADDRESS}、番号は{DOOR_CODE}です。" : "ゆっくりお過ごしください。" })),
     closing: "よい旅を。",
   };
   assert.ok(checkArrivalDraft(d, buildArrivalInput(byId("R16"), inn)).includes("英語で書かれていません"));
@@ -260,7 +268,7 @@ test("監査役に3回差し戻されたら、決まった文に切り替える"
 test("日本語の予約は訳し戻しをしない", async () => {
   const jaDraft = {
     greeting: "ようこそ。お待ちしています。",
-    sections: goodEnDraft().sections.map((s) => ({ ...s, title: "ご案内", body: s.key === "checkin" ? "住所は{ADDRESS}、番号は{DOOR_CODE}です。" : "ホストにお尋ねください。" })),
+    sections: goodEnDraft().sections.map((s) => ({ ...s, title: "ご案内", body: s.key === "checkin" ? "住所は{ADDRESS}、番号は{DOOR_CODE}です。" : "ゆっくりお過ごしください。" })),
     closing: "よい旅を。",
   };
   const { client, calls } = mk([jaDraft, { verdict: "ok", reasons: [] }]);
