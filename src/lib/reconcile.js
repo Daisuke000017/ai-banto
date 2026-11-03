@@ -8,11 +8,13 @@
 
 import { addDays, daysBetween } from "./dates.js";
 import { DEFAULT_RULES, nightsOf, taxNightsOf } from "./counting.js";
+import { describeGuestCount } from "./guest.js";
 
 export const KIND_LABEL = {
   ledger_vs_ota: "台帳と予約サイトの明細",
   payout_vs_bank: "予約サイトの振込と通帳",
   tax_collected: "宿泊税（計算と預かった額）",
+  guest_count: "ゲストが入れた人数と台帳",
 };
 const OTA_JA = { airbnb: "Airbnb", booking: "Booking.com", rakuten: "楽天トラベル" };
 const PAYOUT_WAIT_DAYS = 7; // 振込の日から通帳に入るまで、この日数までは待つ
@@ -272,11 +274,12 @@ export async function runReconcile({ db, rules, now }) {
     return { summary: { total: 0, matched: 0, byKind: {}, info: ["予約サイトの明細がまだありません。先に明細を読み込んでください"] }, discrepancies: [] };
   }
   const { checks, info, lineLinks, depositLinks } = reconcile({ ...input, rules });
-  const { results: old } = await db.prepare("SELECT * FROM discrepancies").all();
+  // ゲストが入れた人数のずれ（guest_count）は、お金の突き合わせとは別に作るので、ここでは消さない
+  const { results: old } = await db.prepare("SELECT * FROM discrepancies WHERE kind != 'guest_count'").all();
   const oldByKey = new Map(old.map((d) => [discrepancyKey(d.kind, JSON.parse(d.facts_json), d.reservation_id), d]));
 
   const stmts = [
-    db.prepare("DELETE FROM discrepancies"),
+    db.prepare("DELETE FROM discrepancies WHERE kind != 'guest_count'"),
     db.prepare("UPDATE ota_lines SET reservation_id = NULL"),
     db.prepare("UPDATE bank_deposits SET payout_id = NULL"),
   ];
@@ -320,6 +323,7 @@ const jd = (iso) => (iso ? `${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 1
 export function describeDiscrepancy(d) {
   const f = d.facts;
   const ota = OTA_JA[f.ota] ?? f.ota;
+  if (d.kind === "guest_count") return describeGuestCount(d);
   if (d.kind === "payout_vs_bank") {
     return d.deposit_id
       ? `${ota}の${jd(f.payout_date)}の振込 ${f.payout_amount.toLocaleString()}円 → 通帳は${jd(f.deposit_date)}に ${f.deposit_amount.toLocaleString()}円`

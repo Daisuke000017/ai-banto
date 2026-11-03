@@ -5,14 +5,19 @@
 // - /api/minpaku/counter                180日カウンター
 // - /api/minpaku/report?period=         定期報告の4項目（例：2026-08_09）
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
-// - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文
+// - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
 // - それ以外の GET                       画面（public/）を返す
 // 書く（POST・JSONだけ・同じ画面からだけ）
 // - /api/drafts                         到着前案内をつくる {reservation_id}
 // - /api/drafts/:id                     確認済みにする {action:"ok"}／手で直す {action:"edit", draft_template}
 // - /api/drafts/:id/copy                コピー用の文（暗証番号・住所を入れる。保存しない）
-// - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる）
+// - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる。前のURLは止める）
+// ゲスト画面（M12・宿のURL）。URLが使えない理由は、どれでも同じ「使えません」だけを返す
+// - GET  /g/:token                        ゲストの画面（public/guest.html）
+// - POST /api/g/:token/language           言語を覚える {language}
+// - POST /api/g/:token/profile            人数・国籍を入れる {language, adults, children, infants, nationalities}
+//                                         （台帳は書きかえない。違えば「ずれ」に入れ、オーナーがOKしたときだけ台帳に入る）
 // 予約メール（M17・貼り付け版）
 // - GET  /api/booking-emails?status=pending|done   確認待ち／決めたもの（伏せた本文だけ）
 // - GET  /api/booking-emails/samples                デモ用の見本メール
@@ -59,12 +64,13 @@ import {
   normLang,
   OWNER_CHECK,
 } from "./lib/arrival.js";
+import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_BODY_BYTES = 10_000;
 const MAX_MAIL_BODY_BYTES = 60_000; // 予約メールの貼り付けだけ大きめ（日本語12,000字まで）
 const MAX_STATEMENT_BODY_BYTES = 3_000_000; // 明細のCSV（2MBまで）を base64 にした大きさ
-// 書体（BIZ UDPGothic）だけ Google Fonts から読む。スクリプトは自分の画面のものだけ
+// 書体だけ Google Fonts から読む。スクリプトは自分の画面のものだけ
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -294,10 +300,14 @@ async function handlePost(request, url, env) {
     const r = await loadReservation(env, body.reservation_id);
     if (r.status !== "confirmed") throw new HttpError(400, "取り消された予約にはURLをつくりません");
     const token = newToken();
-    const expiresAt = `${r.checkout_date}T12:00:00+09:00`;
-    await env.DB.prepare("INSERT INTO guest_links (reservation_id, token_hash, expires_at) VALUES (?, ?, ?)")
-      .bind(r.id, await sha256Hex(token), expiresAt)
-      .run();
+    const expiresAt = expiresAtFor(r.checkout_date);
+    // 新しいURLをつくったら、同じ予約の前のURLは止める（1つの予約に使えるURLは1つだけ）
+    await env.DB.batch([
+      env.DB.prepare("UPDATE guest_links SET revoked = 1 WHERE reservation_id = ? AND revoked = 0").bind(r.id),
+      env.DB.prepare(
+        "INSERT INTO guest_links (reservation_id, token_hash, expires_at, checkin_date, checkout_date) VALUES (?, ?, ?, ?, ?)",
+      ).bind(r.id, await sha256Hex(token), expiresAt, r.checkin_date, r.checkout_date),
+    ]);
     // 鍵そのものは保存しない（ハッシュだけ）。ここで1回だけ見せる
     return json({ reservation_id: r.id, path: `/g/${token}`, token, expires_at: expiresAt }, 201);
   }
@@ -305,21 +315,53 @@ async function handlePost(request, url, env) {
   return null;
 }
 
-// ゲスト画面：URLの鍵を確かめて、確認済みの案内（なければ決まった文）を返す
-async function handleGuest(url, env, today, token) {
-  const guestHeaders = { "referrer-policy": "no-referrer" };
-  const notFound = () => json({ error: "このURLは使えません" }, 404, guestHeaders);
-  if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return notFound();
-  const link = await env.DB.prepare("SELECT reservation_id, expires_at, revoked FROM guest_links WHERE token_hash = ?")
-    .bind(await sha256Hex(token))
-    .first();
-  if (!link || link.revoked) return notFound();
-  if (Date.parse(nowIso(env)) >= Date.parse(link.expires_at)) return json({ error: "このURLの期限が切れました" }, 410, guestHeaders);
+// ゲスト画面（M12）。ゲストに見せるヘッダー：URLの鍵を、ほかのサイトへ漏らさない
+const GUEST_HEADERS = { "referrer-policy": "no-referrer" };
+// URLが使えない理由（期限切れ・取り消し・日付の変更など）は分けて見せない。宿の名前・住所も出さない
+const guestGone = () => json({ error: "unavailable" }, 404, GUEST_HEADERS);
 
+/** URLの鍵を確かめる。使えなければ null（開くたびに、期限・取り消し・予約が確定のままか・日付を見る） */
+async function loadGuestLink(env, token) {
+  if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
+  const tokenHash = await sha256Hex(token);
+  const link = await env.DB.prepare(
+    "SELECT id, reservation_id, expires_at, revoked, checkin_date, checkout_date, language FROM guest_links WHERE token_hash = ?",
+  )
+    .bind(tokenHash)
+    .first();
+  if (!link) return null;
   const r = await env.DB.prepare(RES_ONE).bind(link.reservation_id).first();
-  if (!r || r.status !== "confirmed") return notFound();
+  if (linkProblem(link, r, nowIso(env))) return null;
+  return { link, r };
+}
+
+async function loadGuestProfile(env, reservationId) {
+  const p = await env.DB.prepare(
+    "SELECT language, adults, children, infants, nationalities_json, submitted_at FROM guest_profiles WHERE reservation_id = ?",
+  )
+    .bind(reservationId)
+    .first();
+  if (!p) return null;
+  return { adults: p.adults, children: p.children, infants: p.infants, nationalities: JSON.parse(p.nationalities_json), submitted_at: p.submitted_at };
+}
+
+const parseJsonObject = (s) => {
+  try {
+    const o = JSON.parse(s ?? "{}");
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  } catch {
+    return {};
+  }
+};
+
+// ゲスト画面：確認済みの案内（なければ決まった文）と、人数を入れたかを返す
+async function handleGuest(url, env, today, token) {
+  const found = await loadGuestLink(env, token);
+  if (!found) return guestGone();
+  const { link, r } = found;
   const inn = await loadInn(env);
-  const lang = normLang(url.searchParams.get("lang") ?? r.language);
+  const asked = url.searchParams.get("lang");
+  const lang = normLang(asked ?? link.language ?? r.language);
   const draft = await env.DB.prepare(
     `SELECT draft_template FROM guest_drafts WHERE reservation_id = ? AND kind = 'arrival'
      AND status IN ('ok', 'copied') AND language = ? ORDER BY id DESC LIMIT 1`,
@@ -327,12 +369,71 @@ async function handleGuest(url, env, today, token) {
     .bind(r.id, lang)
     .first();
   const template = draft?.draft_template ?? fixedArrival({ ...r, language: lang }, inn, rulesFromInnProfile(inn)).draft_template;
+  // 住所・暗証番号は、チェックインの日の0時（日本時間）から（guestView の中で伏せる）
   const text = guestView(template, lang, { today, checkin: r.checkin_date, DOOR_CODE: env.DOOR_CODE, ADDRESS: inn.address });
   return json(
-    { inn_name: inn.name, language: lang, checkin: r.checkin_date, checkout: r.checkout_date, source: draft ? "owner_checked" : "fixed", text },
+    {
+      inn_name: inn.name,
+      language: lang,
+      language_chosen: GUEST_LANGS.includes(link.language),
+      checkin: r.checkin_date,
+      checkout: r.checkout_date,
+      source: draft ? "owner_checked" : "fixed",
+      text,
+      // 人数の入力欄に最初から入れておく数（予約サイトから来た数）。名前は持っていない
+      booked: { adults: r.adults ?? 1, children: r.children ?? 0, infants: r.infants ?? 0, nationalities: parseJsonObject(r.nationalities_json) },
+      profile: await loadGuestProfile(env, r.id),
+    },
     200,
-    guestHeaders,
+    GUEST_HEADERS,
   );
+}
+
+// ゲスト画面：書く（言語を覚える・人数を入れる）
+async function handleGuestPost(request, url, env, token, action) {
+  const body = await readJsonBody(request, url);
+  const found = await loadGuestLink(env, token);
+  if (!found) return guestGone();
+  const { link, r } = found;
+
+  if (action === "language") {
+    if (!GUEST_LANGS.includes(body.language)) throw new HttpError(400, "language");
+    await env.DB.prepare("UPDATE guest_links SET language = ? WHERE id = ?").bind(body.language, link.id).run();
+    return json({ language: body.language }, 200, GUEST_HEADERS);
+  }
+
+  // action === "profile"
+  let profile;
+  try {
+    profile = validateProfile(body);
+  } catch (e) {
+    if (e instanceof GuestError) return json({ error: "invalid", problems: e.problems ?? [] }, 400, GUEST_HEADERS);
+    throw e;
+  }
+  const now = nowIso(env);
+  const d = guestCountDiscrepancy(profile, r);
+  const stmts = [
+    env.DB.prepare(
+      `INSERT INTO guest_profiles (reservation_id, language, adults, children, infants, nationalities_json, submitted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (reservation_id) DO UPDATE SET language = excluded.language, adults = excluded.adults, children = excluded.children,
+         infants = excluded.infants, nationalities_json = excluded.nationalities_json, submitted_at = excluded.submitted_at`,
+    ).bind(r.id, profile.language, profile.adults, profile.children, profile.infants, JSON.stringify(profile.nationalities), now),
+    env.DB.prepare("UPDATE guest_links SET language = ? WHERE id = ?").bind(profile.language, link.id),
+    // 前に入れた数のずれ（まだ決めていないもの）は、入れ直した数で作り直す
+    env.DB.prepare("DELETE FROM discrepancies WHERE kind = 'guest_count' AND reservation_id = ? AND status = 'open'").bind(r.id),
+  ];
+  if (d) {
+    stmts.push(
+      env.DB.prepare(
+        `INSERT INTO discrepancies (kind, reservation_id, expected, actual, diff_amount, facts_json, status, created_at)
+         VALUES ('guest_count', ?, ?, ?, ?, ?, 'open', ?)`,
+      ).bind(r.id, d.expected, d.actual, d.diff, JSON.stringify(d.facts), now),
+    );
+  }
+  await env.DB.batch(stmts);
+  // ゲストには、台帳と違ったかどうかは見せない（オーナーが確かめる）
+  return json({ saved: true, profile: await loadGuestProfile(env, r.id) }, 200, GUEST_HEADERS);
 }
 
 // 予約メール（M17）：読む
@@ -448,9 +549,9 @@ async function handleMoneyPost(request, url, env) {
 const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
 
 // 画面のファイル（public/）。安全のヘッダーを付けて返す
-async function serveAsset(request, env) {
+async function serveAsset(request, env, path = null) {
   if (!env.ASSETS) return json({ error: "見つかりません" }, 404);
-  const res = await env.ASSETS.fetch(request);
+  const res = await env.ASSETS.fetch(path ? new Request(new URL(path, request.url), { method: "GET" }) : request);
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
   return out;
@@ -462,10 +563,20 @@ export default {
     if (!LOCAL_HOSTS.has(url.hostname)) return json({ error: "この画面はまだ公開していません" }, 403);
     const today = todayJst(env.DEMO_TODAY);
     try {
-      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/home$/);
+      // ゲスト画面（M12）。オーナー画面より先に見る
+      const gp = url.pathname.match(/^\/g\/([A-Za-z0-9_-]{20,100})$/);
+      if (gp) {
+        if (request.method !== "GET") return json({ error: "この操作は受け付けていません" }, 405);
+        return await serveAsset(request, env, "/guest");
+      }
+      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|language|profile)$/);
       if (g) {
-        if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
-        return await handleGuest(url, env, today, g[1]);
+        if (g[2] === "home") {
+          if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
+          return await handleGuest(url, env, today, g[1]);
+        }
+        if (request.method !== "POST") return json({ error: "この操作は受け付けていません" }, 405);
+        return await handleGuestPost(request, url, env, g[1], g[2]);
       }
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return await serveAsset(request, env);
       if (request.method === "GET" && isMoneyPath(url.pathname)) {

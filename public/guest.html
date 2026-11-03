@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Guest guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap">
+  <link rel="stylesheet" href="/guest.css">
+  <script type="module" src="/guest.js"></script>
+</head>
+<body>
+  <main class="wrap">
+
+    <!-- 読み込み中（言語が分かる前なので4言語） -->
+    <section id="v-loading" class="view" aria-live="polite">
+      <p class="multi">読み込み中です<br>Loading<br>불러오는 중입니다<br>載入中</p>
+    </section>
+
+    <!-- G-X URLが使えません（宿の名前・住所は出さない） -->
+    <section id="v-gone" class="view" hidden>
+      <div class="card notice">
+        <p lang="ja">このページは使えません。宿のオーナーにお問い合わせください。</p>
+        <p lang="en">This page is not available. Please contact your host.</p>
+        <p lang="ko">이 페이지는 사용할 수 없습니다. 숙소 호스트에게 문의해 주세요.</p>
+        <p lang="zh-TW">此頁面無法使用。請聯絡住宿的屋主。</p>
+      </div>
+    </section>
+
+    <!-- 通信できないとき -->
+    <section id="v-error" class="view" hidden>
+      <div class="card notice">
+        <p lang="ja">通信できませんでした。電波のよい所で、もう一度開いてください。</p>
+        <p lang="en">We could not connect. Please try again where the signal is better.</p>
+        <p lang="ko">연결할 수 없습니다. 신호가 좋은 곳에서 다시 열어 주세요.</p>
+        <p lang="zh-TW">無法連線。請在訊號較好的地方再試一次。</p>
+      </div>
+      <button type="button" class="btn" id="retry">もう一度 / Try again / 다시 / 再試一次</button>
+    </section>
+
+    <!-- G-1 言語を選ぶ -->
+    <section id="v-lang" class="view" hidden>
+      <h1 class="title multi">言語を選んでください<br>Choose your language<br>언어를 선택하세요<br>請選擇語言</h1>
+      <div class="lang-list" id="lang-list"></div>
+    </section>
+
+    <!-- G-2 人数・国籍 -->
+    <section id="v-profile" class="view" hidden>
+      <button type="button" class="back" id="profile-back" hidden></button>
+      <h1 class="title" id="p-title"></h1>
+      <p class="reason" id="p-reason"></p>
+      <form id="p-form" novalidate>
+        <div class="card">
+          <div class="stepper" data-kind="adults"></div>
+          <div class="stepper" data-kind="children"></div>
+          <div class="stepper" data-kind="infants"></div>
+        </div>
+        <h2 class="sub-title" id="n-title"></h2>
+        <div class="card" id="n-list"></div>
+        <p class="msg msg-danger" id="p-msg" role="alert" hidden></p>
+        <button type="submit" class="btn btn-main" id="p-save"></button>
+      </form>
+    </section>
+
+    <!-- G-3 ホーム -->
+    <section id="v-home" class="view" hidden>
+      <header class="home-head">
+        <p class="inn" id="h-inn"></p>
+        <p class="dates" id="h-dates"></p>
+      </header>
+      <p class="msg msg-ok" id="h-done" role="status" hidden></p>
+      <div class="tiles">
+        <button type="button" class="tile" data-open="arrival">
+          <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 42V8h22v34M32 42h6M10 42H6M26 25h1"/><path d="M32 8l8 3v31"/></svg>
+          <span id="t-arrival"></span>
+        </button>
+        <button type="button" class="tile" data-open="bus">
+          <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="9" y="6" width="30" height="32" rx="5"/><path d="M9 24h30M15 38v5M33 38v5M16 31h1M31 31h1M16 13h16"/></svg>
+          <span id="t-bus"></span>
+        </button>
+        <button type="button" class="tile tile-danger" data-open="sos">
+          <svg class="ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 6L44 41H4z"/><path d="M24 19v11M24 35v1"/></svg>
+          <span id="t-sos"></span>
+        </button>
+      </div>
+      <div class="links">
+        <button type="button" class="btn" id="h-people"></button>
+        <button type="button" class="btn" id="h-lang">言語 / Language / 언어 / 語言</button>
+      </div>
+    </section>
+
+    <!-- G-3 の中身（到着案内／バス／もしものとき） -->
+    <section id="v-panel" class="view" hidden>
+      <button type="button" class="back" id="panel-back"></button>
+      <h1 class="title" id="pn-title"></h1>
+      <div id="pn-arrival" class="panel" hidden>
+        <p class="src" id="pn-src" hidden></p>
+        <div class="card"><p class="guide" id="pn-text"></p></div>
+      </div>
+      <div id="pn-bus" class="panel" hidden>
+        <div class="card"><p id="pn-bus-text"></p></div>
+      </div>
+      <div id="pn-sos" class="panel" hidden>
+        <a class="call" href="tel:119"><span class="num">119</span><span id="sos-119"></span></a>
+        <a class="call" href="tel:110"><span class="num">110</span><span id="sos-110"></span></a>
+        <p class="src" id="sos-note"></p>
+      </div>
+    </section>
+
+    <p class="foot" id="foot" hidden></p>
+  </main>
+</body>
+</html>

@@ -9,6 +9,8 @@
 import { AiUnavailable, callJson, markSentBack } from "./anthropic.js";
 import { MODELS } from "./models.js";
 import { getDiscrepancy } from "./reconcile.js";
+import { stayNightRows } from "./counting.js";
+import { GuestError, guestCountApplyStatements } from "./guest.js";
 
 export const REASON_CODES = ["fee", "cancel_fee", "lodging_tax", "timing", "discount", "refund", "transfer_fee", "missing_line", "other"];
 export const REASON_JA = {
@@ -234,6 +236,8 @@ function aiInput(d, materials, fix) {
 export async function suggestReasons({ client, db, id }) {
   const d = await getDiscrepancy(db, id);
   if (!d) return null;
+  // ゲストが入れた人数のずれは、お金の理由ではないので候補を作らない（オーナーが見て決める）
+  if (d.kind === "guest_count") throw new DiscrepancyError("人数のずれには理由の候補を作りません");
   const materials = programMaterials(d);
   const result = client ? await aiReasons({ client, db, d, materials }) : programResult(d, materials, "no_key");
   await db
@@ -359,9 +363,25 @@ export async function resolveDiscrepancy({ db, id, action, note, now }) {
   if (text && text.length > MAX_NOTE) throw new DiscrepancyError(`メモは${MAX_NOTE}字までです`);
   const d = await getDiscrepancy(db, id);
   if (!d) throw new DiscrepancyError("そのずれは見つかりません", 404);
-  await db
+  const update = db
     .prepare("UPDATE discrepancies SET status = ?, owner_note = ?, resolved_at = ? WHERE id = ?")
-    .bind(action, text || null, action === "open" ? null : now, id)
-    .run();
+    .bind(action, text || null, action === "open" ? null : now, id);
+  if (d.kind === "guest_count") {
+    // 一度決めた人数のずれは、もとに戻さない（台帳をもう直しているため）
+    if (d.status !== "open") throw new DiscrepancyError("この人数のずれは、もう決めてあります", 409);
+    if (action === "ok") {
+      // OK＝ゲストが入れた人数・国籍を台帳に入れる（宿泊税・定期報告は、このあと計算し直される）
+      let stmts;
+      try {
+        stmts = await guestCountApplyStatements(db, d, stayNightRows);
+      } catch (e) {
+        if (e instanceof GuestError) throw new DiscrepancyError(e.message, e.status);
+        throw e;
+      }
+      await db.batch([...stmts, update]);
+      return getDiscrepancy(db, id);
+    }
+  }
+  await update.run();
   return getDiscrepancy(db, id);
 }

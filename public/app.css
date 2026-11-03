@@ -358,3 +358,7 @@ tbody tr.total td { font-weight: 700; }
   .kpi-nums { grid-template-columns: 1fr; }
   .kpi-nums .num.kpi-main dd { font-size: 32px; }
 }
+
+/* ゲスト用URLのQRコード（スマホのカメラで読む） */
+.qr { display: block; width: 240px; height: 240px; margin: var(--s3) 0; }
+.plain-list { margin: 0; padding-left: 1.2em; }

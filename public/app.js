@@ -2,12 +2,14 @@
 // 約束：AI・ゲスト由来の文は textContent だけで出す（innerHTML を使わない）。暗証番号は画面に出さない。
 // 決めごとは docs/DESIGN.md
 
+import { qrMatrix } from "./qr.js";
+
 const MASK = "●●●●（コピー時に入ります）";
 const LANG = { ja: "日本語", en: "英語", ko: "韓国語", "zh-TW": "繁体字中国語" };
 const OTA = { airbnb: "Airbnb", booking: "Booking.com", direct: "直接予約", rakuten: "楽天トラベル", jalan: "じゃらん" };
 const COUNTRY = {
   JP: "日本", KR: "韓国", TW: "台湾", CN: "中国", HK: "香港", US: "アメリカ", AU: "オーストラリア",
-  GB: "イギリス", FR: "フランス", DE: "ドイツ", SG: "シンガポール", TH: "タイ", UNKNOWN: "分からない",
+  GB: "イギリス", FR: "フランス", DE: "ドイツ", SG: "シンガポール", TH: "タイ", OTHER: "その他", UNKNOWN: "分からない",
 };
 const STATUS = {
   null: { label: "まだ", cls: "" },
@@ -709,6 +711,7 @@ function draftCard(d) {
       const url = `${location.origin}${r.path}`;
       const box = el("div", { cls: "url-box" }, [
         el("p", { text: "ゲスト用URL（この画面を閉じると、もう表示できません）" }),
+        qrSvg(url),
         el("p", { text: url }),
         el("p", { cls: "lead", text: `期限：${jpDate(r.expires_at)} 正午まで。暗証番号はチェックイン当日から表示されます` }),
         el("div", { cls: "btns" }, [
@@ -1035,6 +1038,8 @@ const REASON_JA = {
 };
 const CONF = { high: { label: "確か", cls: "ok" }, mid: { label: "たぶん", cls: "warn" }, low: { label: "確かめて", cls: "danger" } };
 const DISC_STATUS = { open: { label: "確認待ち", cls: "warn" }, ok: { label: "このままでOK", cls: "ok" }, fixed: { label: "直した", cls: "ok" } };
+// ゲストが入れた人数のずれは、決めた中身が違うので札も変える
+const GUEST_STATUS = { open: DISC_STATUS.open, ok: { label: "台帳に入れた", cls: "ok" }, fixed: { label: "台帳のまま", cls: "ok" } };
 const MAX_FILE_BYTES = 2_000_000;
 const MAP_STEPS = [
   [["keiri"], "経理担当が列の見出しを読んでいます（中身は伏せてあります）"],
@@ -1284,19 +1289,23 @@ function resultCard(statements, discs, primary) {
 }
 
 function discCard(d) {
-  const st = DISC_STATUS[d.status] ?? DISC_STATUS.open;
+  const st = (d.kind === "guest_count" ? GUEST_STATUS : DISC_STATUS)[d.status] ?? DISC_STATUS.open;
   const card = el("article", { cls: "mail-card", attrs: { id: `disc-${d.id}` } });
   const reasonBox = el("div");
   const msg = el("div");
   const sub = [d.kind_label, d.reservation_id ? `予約 ${d.reservation_id}` : null].filter(Boolean).join("・");
+  const isGuest = d.kind === "guest_count";
 
   card.append(
     el("div", { cls: "card-head" }, [el("h3", { text: d.title }), el("span", { cls: `pill ${st.cls}`, text: st.label })]),
-    el("p", { cls: "lead", text: `${sub}　ずれ ${signedYen(d.diff)}` }),
+    el("p", { cls: "lead", text: isGuest ? sub : `${sub}　ずれ ${signedYen(d.diff)}` }),
     reasonBox,
   );
 
-  if (!d.reasons) {
+  if (isGuest) {
+    // ゲストが入れた人数は、AIに理由を考えさせない。台帳とゲストの数を並べるだけ
+    reasonBox.append(...guestCountView(d));
+  } else if (!d.reasons) {
     const make = btn("理由の候補をつくる", makeReasons, "btn small");
     reasonBox.append(el("div", { cls: "btns" }, [make]));
   } else {
@@ -1306,10 +1315,15 @@ function discCard(d) {
   // オーナーの判断
   const note = el("textarea", { cls: "text-in note-in", attrs: { "aria-label": "メモ（なくてもよい）", maxlength: "500", placeholder: "メモ（なくてもよい）" } });
   note.value = d.owner_note ?? "";
+  // 人数のずれは一度決めたら戻せない（OK のとき台帳をもう直しているため）
   const acts =
     d.status === "open"
-      ? [btn("OK（このずれで正しい）", () => resolve("ok"), "btn small"), btn("直した", () => resolve("fixed"), "btn small")]
-      : [btn("確認待ちに戻す", () => resolve("open"), "btn small")];
+      ? isGuest
+        ? [btn("OK（ゲストの人数を台帳に入れる）", () => resolve("ok"), "btn small"), btn("台帳のままにする", () => resolve("fixed"), "btn small")]
+        : [btn("OK（このずれで正しい）", () => resolve("ok"), "btn small"), btn("直した", () => resolve("fixed"), "btn small")]
+      : isGuest
+        ? []
+        : [btn("確認待ちに戻す", () => resolve("open"), "btn small")];
   if (d.status === "open") card.append(note);
   else if (d.owner_note) card.append(el("p", { cls: "lead", text: `メモ：${d.owner_note}` }));
   card.append(msg, el("div", { cls: "btns" }, acts));
@@ -1339,7 +1353,17 @@ function discCard(d) {
     for (const b of card.querySelectorAll("button")) b.disabled = true;
     try {
       const nd = await api(`/api/discrepancies/${d.id}`, { method: "POST", body: { action, note: action === "open" ? d.owner_note : note.value } });
-      toast(action === "ok" ? "このずれは正しい、と記録しました" : action === "fixed" ? "直した、と記録しました" : "確認待ちに戻しました");
+      toast(
+        isGuest && action === "ok"
+          ? "ゲストの人数を台帳に入れました。宿泊税と定期報告は、この人数で計算し直されます"
+          : isGuest && action === "fixed"
+            ? "台帳の人数のままにしました"
+            : action === "ok"
+              ? "このずれは正しい、と記録しました"
+              : action === "fixed"
+                ? "直した、と記録しました"
+                : "確認待ちに戻しました",
+      );
       card.replaceWith(discCard(nd));
     } catch (err) {
       for (const b of card.querySelectorAll("button")) b.disabled = false;
@@ -1347,6 +1371,54 @@ function discCard(d) {
     }
   }
   return card;
+}
+
+const PEOPLE = (p) => [`大人${p.adults}`, p.children ? `子ども${p.children}` : null, p.infants ? `乳幼児${p.infants}` : null].filter(Boolean).join("・");
+const NATS = (o) =>
+  Object.entries(o ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([c, n]) => `${COUNTRY[c] ?? c}${n}`)
+    .join("・") || "なし";
+
+/** ゲストが入れた人数と台帳を並べる（数と国籍だけ。名前は出さない） */
+function guestCountView(d) {
+  const f = d.facts;
+  if (!f?.ledger || !f?.guest) return [];
+  const row = (label, p) => el("li", { text: `${label}：${PEOPLE(p)}（${NATS(p.nationalities)}）` });
+  const open = d.status === "open";
+  const after = {
+    open: "OK を押すまで、宿泊税と定期報告は台帳の人数のままです",
+    ok: "ゲストが入れた人数を台帳に入れました。宿泊税と定期報告は、この人数で数えています",
+    fixed: "台帳の人数のままにしました",
+  };
+  return [
+    el("ul", { cls: "plain-list" }, [row(open ? "台帳" : "決める前の台帳", f.ledger), row("ゲストが入れた数", f.guest)]),
+    el("p", { cls: "lead", text: after[d.status] ?? after.open }),
+  ];
+}
+
+function qrSvg(text) {
+  const NS = "http://www.w3.org/2000/svg";
+  const m = qrMatrix(text);
+  const quiet = 4;
+  const n = m.length + quiet * 2;
+  let d = "";
+  m.forEach((row, y) => row.forEach((dark, x) => dark && (d += `M${x + quiet} ${y + quiet}h1v1h-1z`)));
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${n} ${n}`);
+  svg.setAttribute("class", "qr");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "ゲスト用URLのQRコード");
+  svg.setAttribute("shape-rendering", "crispEdges");
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", n);
+  bg.setAttribute("height", n);
+  bg.setAttribute("fill", "#fff");
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("fill", "#000");
+  svg.append(bg, path);
+  return svg;
 }
 
 function reasonView(d) {
