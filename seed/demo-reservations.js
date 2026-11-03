@@ -10,9 +10,9 @@ export const innProfile = {
   name: "しおさいの家（架空）",
   type: "家主不在型",
   rooms: 2,
-  address: "宮崎県宮崎市（架空の住所）",
-  lat: 31.9,
-  lng: 131.42,
+  address: "宮崎県宮崎市青島（架空の住所）",
+  lat: 31.803, // 青島の実在の地点（津波の浸水想定 約3.8m の区域）。宿そのものは架空
+  lng: 131.469,
   checkin_method_json: JSON.stringify({ type: "keybox", code_ref: "SECRET:KEYBOX_CODE" }),
   house_rules_json: JSON.stringify(["22時以降は静かに", "室内禁煙", "ごみは分別して玄関の箱へ"]),
   allowed_promises_json: JSON.stringify(["タオルの追加", "チェックアウト後の荷物預かり（12時まで）"]),
