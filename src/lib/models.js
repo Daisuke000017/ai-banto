@@ -6,6 +6,8 @@ export const MODELS = {
   banto: "claude-sonnet-5-5",
   shukuhaku: "claude-sonnet-5-5",
   kansa: "claude-opus-5-5",
+  // 経理担当（明細の列の対応の案・ずれの理由の候補）＝ Sonnet：正しさはプログラムが計算で確かめる
+  keiri: "claude-sonnet-5-5",
 };
 
 // アプリ全体のAI呼び出しの上限（デモ用・1日あたり）。Anthropic 側の月の上限とは別にかける

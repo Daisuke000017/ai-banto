@@ -19,6 +19,15 @@
 // - POST /api/booking-emails/:id/confirm            OK＝台帳に入れる {fields?}（直した値）
 // - POST /api/booking-emails/:id/edit               直す {fields}（確認待ちのまま。台帳は変えない）
 // - POST /api/booking-emails/:id/reject             捨てる
+// お金の照合（M1〜M4）
+// - GET  /api/statements                 読み込んだ明細の一覧
+// - GET  /api/statements/samples         デモ用の見本の明細
+// - POST /api/uploads                    明細のCSVを読む {filename, base64|text, kind?}（列の対応の案を返す。まだ保存しない）
+// - POST /api/uploads/:id/confirm        列の対応をOKにして読み込む {mapping, base64|text}
+// - POST /api/reconcile                  台帳・明細・通帳を突き合わせる（プログラムだけ）
+// - GET  /api/discrepancies              ずれの一覧
+// - POST /api/discrepancies/:id/reasons  理由の候補を出す（経理担当→計算で確かめる→監査役）
+// - POST /api/discrepancies/:id          オーナーの判断 {action:"ok"|"fixed"|"open", note?}
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
@@ -34,6 +43,10 @@ import {
   rejectBookingEmail,
 } from "./lib/booking-email.js";
 import { sampleEmails } from "../seed/demo-booking-emails.js";
+import { confirmStatement, intakeStatement, listStatements, StatementError } from "./lib/statements.js";
+import { listDiscrepancies, runReconcile } from "./lib/reconcile.js";
+import { DiscrepancyError, resolveDiscrepancy, suggestReasons } from "./lib/discrepancy.js";
+import { sampleStatements } from "../seed/demo-statements.js";
 import {
   checkTemplateEdit,
   fillPlaceholders,
@@ -48,6 +61,7 @@ import {
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_BODY_BYTES = 10_000;
 const MAX_MAIL_BODY_BYTES = 60_000; // 予約メールの貼り付けだけ大きめ（日本語12,000字まで）
+const MAX_STATEMENT_BODY_BYTES = 3_000_000; // 明細のCSV（2MBまで）を base64 にした大きさ
 // 書体（BIZ UDPGothic）だけ Google Fonts から読む。スクリプトは自分の画面のものだけ
 const CSP = [
   "default-src 'self'",
@@ -357,6 +371,68 @@ async function handleBookingEmailPost(request, url, env, today) {
   return json(r);
 }
 
+// お金の照合（M1〜M4）：読む
+async function handleMoneyGet(url, env) {
+  const p = url.pathname;
+  if (p === "/api/statements/samples") {
+    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    return json({ samples: sampleStatements.map((s) => ({ key: s.key, kind: s.kind, label: s.label, filename: s.filename, text: s.text })) });
+  }
+  if (p === "/api/statements") return json({ statements: await listStatements(env.DB) });
+  if (p === "/api/discrepancies") return json({ discrepancies: await listDiscrepancies(env.DB) });
+  return null;
+}
+
+function aiClient(env) {
+  try {
+    return makeClient(env);
+  } catch {
+    return null; // 鍵がない → プログラムだけで進める
+  }
+}
+
+const fileInput = (body) => ({
+  base64: typeof body.base64 === "string" ? body.base64 : undefined,
+  text: typeof body.text === "string" ? body.text : undefined,
+});
+
+// お金の照合（M1〜M4）：書く
+async function handleMoneyPost(request, url, env) {
+  const p = url.pathname;
+  const big = p === "/api/uploads" || /^\/api\/uploads\/\d+\/confirm$/.test(p);
+  const body = await readJsonBody(request, url, big ? MAX_STATEMENT_BODY_BYTES : MAX_BODY_BYTES);
+  const now = nowIso(env);
+  try {
+    if (p === "/api/uploads") {
+      const kind = typeof body.kind === "string" && body.kind ? body.kind : null;
+      return json(await intakeStatement({ client: aiClient(env), db: env.DB, kind, ...fileInput(body), now }), 201);
+    }
+    const up = p.match(/^\/api\/uploads\/(\d+)\/confirm$/);
+    if (up) {
+      return json(await confirmStatement({ db: env.DB, uploadId: Number(up[1]), mapping: body.mapping, ...fileInput(body), now }));
+    }
+    if (p === "/api/reconcile") {
+      return json(await runReconcile({ db: env.DB, rules: rulesFromInnProfile(await loadInn(env)), now }));
+    }
+    const rs = p.match(/^\/api\/discrepancies\/(\d+)\/reasons$/);
+    if (rs) {
+      const d = await suggestReasons({ client: aiClient(env), db: env.DB, id: Number(rs[1]) });
+      if (!d) throw new HttpError(404, "そのずれは見つかりません");
+      return json(d);
+    }
+    const one = p.match(/^\/api\/discrepancies\/(\d+)$/);
+    if (one) {
+      return json(await resolveDiscrepancy({ db: env.DB, id: Number(one[1]), action: body.action, note: body.note, now }));
+    }
+    return null;
+  } catch (e) {
+    if (e instanceof StatementError || e instanceof DiscrepancyError) throw new HttpError(e.status, e.message);
+    throw e;
+  }
+}
+
+const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
+
 // 画面のファイル（public/）。安全のヘッダーを付けて返す
 async function serveAsset(request, env) {
   if (!env.ASSETS) return json({ error: "見つかりません" }, 404);
@@ -378,8 +454,14 @@ export default {
         return await handleGuest(url, env, today, g[1]);
       }
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return await serveAsset(request, env);
-      if (request.method === "GET") {
+      if (request.method === "GET" && isMoneyPath(url.pathname)) {
+        const res = await handleMoneyGet(url, env);
+        if (res) return res;
+      } else if (request.method === "GET") {
         const res = await handleGet(url, env, today);
+        if (res) return res;
+      } else if (request.method === "POST" && isMoneyPath(url.pathname)) {
+        const res = await handleMoneyPost(request, url, env);
         if (res) return res;
       } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links")) {
         const res = await handlePost(request, url, env);

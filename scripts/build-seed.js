@@ -32,6 +32,12 @@ export function buildSeedSql() {
   const lines = [
     "-- 自動生成（npm run seed:build）。手で直さず seed/demo-reservations.js を直す。",
     "-- 中身はすべて架空データ。",
+    "DELETE FROM discrepancies;",
+    "DELETE FROM bank_deposits;",
+    "DELETE FROM ota_lines;",
+    "DELETE FROM ota_payouts;",
+    "DELETE FROM uploads;",
+    "DELETE FROM column_maps;",
     "DELETE FROM booking_emails;",
     "DELETE FROM stay_nights;",
     "DELETE FROM tax_drafts;",

@@ -877,9 +877,395 @@ function doneCard(emails) {
   ]);
 }
 
+// ---- お金の照合（M1〜M4） ----
+// 明細を選ぶ → 経理担当が列の対応の案をつくる → オーナーが OK → プログラムが突き合わせる
+// → ずれごとに、経理担当が理由の候補を出し、プログラムが計算で確かめ、監査役が見直す → オーナーが OK／直した。
+
+const STMT_KIND = { airbnb: "Airbnb", booking: "Booking.com", rakuten: "楽天トラベル", bank: "通帳" };
+const STMT_ORDER = ["airbnb", "booking", "bank"];
+const REASON_JA = {
+  fee: "手数料", cancel_fee: "キャンセル料", lodging_tax: "宿泊税", timing: "入金の時期", discount: "割引",
+  refund: "返金", transfer_fee: "振込手数料", missing_line: "明細の抜け", other: "そのほか",
+};
+const CONF = { high: { label: "確か", cls: "ok" }, mid: { label: "たぶん", cls: "warn" }, low: { label: "確かめて", cls: "danger" } };
+const DISC_STATUS = { open: { label: "確認待ち", cls: "warn" }, ok: { label: "このままでOK", cls: "ok" }, fixed: { label: "直した", cls: "ok" } };
+const MAX_FILE_BYTES = 2_000_000;
+const MAP_STEPS = [
+  [["keiri"], "経理担当が列の見出しを読んでいます（中身は伏せてあります）"],
+  [[], "プログラムが、日付や金額として読めるか確かめています"],
+];
+const REASON_STEPS = [
+  [["keiri"], "経理担当が、ずれの理由を考えています"],
+  [["kansa"], "プログラムが計算で確かめ、監査役が見直しています"],
+];
+
+const signedYen = (n) => (n === 0 ? "0円" : `${n > 0 ? "＋" : "−"}${yen(Math.abs(n))}円`);
+
+function toBase64(buf) {
+  const b = new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+async function showMoney() {
+  const p = $("panel-money");
+  p.replaceChildren(loading("読み込んだ明細を確かめています"));
+  try {
+    const [s, d] = await Promise.all([api("/api/statements"), api("/api/discrepancies")]);
+    const loaded = s.statements.length;
+    const importPrimary = loaded < STMT_ORDER.length;
+    p.replaceChildren(importCard(s.statements, importPrimary), el("div", { attrs: { id: "map-holder" } }), resultCard(s.statements, d.discrepancies, !importPrimary));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showMoney));
+  }
+}
+
+function importCard(statements, primary) {
+  const byKind = Object.fromEntries(statements.map((s) => [s.kind, s]));
+  const kinds = [...new Set([...STMT_ORDER, ...statements.map((s) => s.kind)])];
+  const status = el(
+    "ul",
+    { cls: "stmt-list", attrs: { "aria-label": "読み込んだ明細" } },
+    kinds.map((k) => {
+      const s = byKind[k];
+      return el("li", {}, [el("span", { cls: `pill ${s ? "ok" : ""}`, text: `${STMT_KIND[k] ?? k}：${s ? `読み込み済み（${s.row_count}行）` : "まだ"}` })]);
+    }),
+  );
+  const kindSel = el("select", { attrs: { id: "stmt-kind" } }, [el("option", { text: "自動で見分ける", attrs: { value: "" } })]);
+  for (const [v, label] of Object.entries(STMT_KIND)) kindSel.append(el("option", { text: label, attrs: { value: v } }));
+  const fileIn = el("input", { cls: "file-in", attrs: { type: "file", id: "stmt-file", accept: ".csv,.tsv,.txt,text/csv" } });
+  const pick = el("div", { cls: "pick", attrs: { hidden: true } });
+  const msg = el("div");
+  const go = btn("経理担当に列を見てもらう", read, primary ? "btn primary" : "btn");
+  let samples = [];
+  let sampleSel = null;
+
+  // デモのときだけ、見本の明細を選べる
+  api("/api/statements/samples")
+    .then((d) => {
+      samples = d.samples;
+      sampleSel = el("select", { attrs: { id: "stmt-sample" } }, [el("option", { text: "選んでください", attrs: { value: "" } })]);
+      for (const s of samples) sampleSel.append(el("option", { text: s.label, attrs: { value: s.key } }));
+      sampleSel.addEventListener("change", () => {
+        const s = samples.find((x) => x.key === sampleSel.value);
+        if (!s) return;
+        fileIn.value = "";
+        kindSel.value = s.kind;
+      });
+      pick.replaceChildren(el("label", { text: "見本を使う（デモ）", attrs: { for: "stmt-sample" } }), sampleSel);
+      pick.hidden = false;
+    })
+    .catch(() => {});
+  fileIn.addEventListener("change", () => {
+    if (sampleSel) sampleSel.value = "";
+  });
+
+  async function read() {
+    let file = null;
+    const sample = samples.find((x) => x.key === sampleSel?.value);
+    if (sample) {
+      file = { text: sample.text, name: sample.filename };
+    } else if (fileIn.files?.[0]) {
+      const f = fileIn.files[0];
+      if (f.size > MAX_FILE_BYTES) {
+        msg.replaceChildren(el("p", { cls: "notice warn", text: "ファイルが大きすぎます（2MBまで）。月ごとに分けて読み込んでください" }));
+        return;
+      }
+      file = { base64: toBase64(await f.arrayBuffer()), name: f.name };
+    } else {
+      msg.replaceChildren(el("p", { cls: "notice warn", text: "CSVのファイルを選んでください" }));
+      return;
+    }
+    go.disabled = true;
+    teamWorking((note) => msg.replaceChildren(loading(`${note}（10秒ほど）`)), MAP_STEPS);
+    try {
+      const up = await api("/api/uploads", { method: "POST", body: { kind: kindSel.value || null, text: file.text, base64: file.base64 } });
+      teamDone(up.source === "ai" ? "経理担当が列の対応の案をつくりました。見て OK を押してください" : "列の対応を出しました。見て OK を押してください");
+      msg.replaceChildren();
+      go.disabled = false;
+      // 塗りのボタンは画面に1つだけ（いまは対応表の OK）
+      for (const b of $("panel-money").querySelectorAll(".btn.primary")) b.className = "btn";
+      const holder = $("map-holder");
+      holder.replaceChildren(mapCard(up, file));
+      holder.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      teamDone();
+      go.disabled = false;
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  }
+
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "明細を読み込む" }),
+    el("p", { cls: "lead", text: "予約サイトの明細と通帳のCSVを読み込みます。どの列が何かは経理担当が案をつくり、決めるのはご本人です" }),
+    status,
+    el("div", { cls: "fields" }, [
+      el("div", { cls: "field" }, [el("label", { text: "明細の種類", attrs: { for: "stmt-kind" } }), kindSel]),
+      el("div", { cls: "field" }, [el("label", { text: "CSVのファイル", attrs: { for: "stmt-file" } }), fileIn]),
+    ]),
+    pick,
+    msg,
+    el("div", { cls: "btns" }, [go]),
+  ]);
+}
+
+function mapCard(up, file) {
+  const kindName = STMT_KIND[up.kind] ?? up.kind;
+  const sels = {};
+  const msg = el("div");
+  const head =
+    up.source === "ai"
+      ? el("p", { cls: "credits", attrs: { "aria-label": "経理担当が案をつくり、プログラムが確かめた対応表です" } }, [
+          el("span", { text: "案をつくった" }),
+          el("span", { cls: "role-pill", text: "経理担当" }),
+          el("span", { text: "確かめた" }),
+          el("span", { text: "プログラム" }),
+        ])
+      : el("p", { cls: "lead", text: up.source === "saved" ? "前に OK した対応表と同じ形の明細です" : "見出しの言葉から、プログラムが見当をつけました" });
+
+  const fields = up.fields.map(({ field, label }) => {
+    const id = `map-${field}`;
+    const sel = el("select", { attrs: { id } }, [el("option", { text: "使わない", attrs: { value: "" } })]);
+    for (const c of up.columns) {
+      const ex = c.samples.length ? `（例：${c.samples.slice(0, 2).join("・")}）` : "";
+      sel.append(
+        el("option", {
+          text: c.sensitive ? `${c.header}（名前・残高などの列なので読みません）` : `${c.header}${ex}`,
+          attrs: { value: String(c.index), disabled: c.sensitive, selected: up.mapping[field] === c.index },
+        }),
+      );
+    }
+    sels[field] = sel;
+    const conf = CONF[up.confidence?.[field]];
+    return el("div", { cls: "field" }, [
+      el("label", { attrs: { for: id } }, [label, conf ? el("span", { cls: `pill ${conf.cls}`, text: conf.label }) : null]),
+      sel,
+    ]);
+  });
+
+  const notes = (up.notes ?? []).map((n) => el("p", { cls: `notice ${n.includes("確かめてください") ? "warn" : "info"}`, text: n }));
+  const problems = up.problems?.length ? [el("p", { cls: "notice warn", text: up.problems.join("／") })] : [];
+  const hidden = up.columns.filter((c) => c.sensitive).map((c) => c.header);
+
+  const ok = btn("OK", doOk, "btn primary");
+  const card = el("article", { cls: "card", attrs: { id: "map-card" } }, [
+    el("div", { cls: "card-head" }, [
+      el("div", {}, [el("h2", { text: `${kindName}の明細：列の対応` }), head]),
+      el("span", { cls: "pill warn", text: "確認待ち" }),
+    ]),
+    el("p", { cls: "lead", text: `${up.row_count}行あります。違っている所は選び直してください。OK を押すまで、何も読み込みません` }),
+    ...notes,
+    ...problems,
+    el("div", { cls: "fields" }, fields),
+    hidden.length ? el("p", { cls: "notice info", text: `名前・残高・口座などの列は読みません：${hidden.join("・")}` }) : null,
+    msg,
+    el("div", { cls: "btns" }, [ok, btn("やめる", () => card.remove())]),
+  ]);
+
+  async function doOk() {
+    const mapping = {};
+    for (const [f, s] of Object.entries(sels)) mapping[f] = s.value === "" ? null : Number(s.value);
+    ok.disabled = true;
+    msg.replaceChildren(loading("プログラムが全部の行を読み込んでいます"));
+    try {
+      const r = await api(`/api/uploads/${up.upload_id}/confirm`, { method: "POST", body: { mapping, text: file.text, base64: file.base64 } });
+      const parts = [r.read.lines && `明細 ${r.read.lines}行`, r.read.payouts && `振込 ${r.read.payouts}件`, r.read.deposits && `入出金 ${r.read.deposits}件`].filter(Boolean);
+      state.moneySummary = null;
+      toast(`${STMT_KIND[r.kind] ?? r.kind}の明細を読み込みました（${parts.join("・")}）。全部そろったら「照合する」を押してください`);
+      await showMoney();
+    } catch (err) {
+      ok.disabled = false;
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  }
+  return card;
+}
+
+function resultCard(statements, discs, primary) {
+  const s = state.moneySummary;
+  const open = discs.filter((d) => d.status === "open").length;
+  const go = btn("照合する", reconcile, primary ? "btn primary" : "btn");
+  go.disabled = !statements.length;
+  const msg = el("div");
+  const card = el("article", { cls: "card" }, [
+    el("h2", { text: "照合の結果" }),
+    el("p", { cls: "lead", text: "台帳・予約サイトの明細・通帳を、プログラムが突き合わせます（数えるのはAIではありません）" }),
+  ]);
+  if (s) {
+    card.append(
+      el("dl", { cls: "nums" }, [
+        num("突き合わせた", s.total, "件"),
+        num("合っている", s.matched, "件", "is-ok"),
+        num("ずれ", s.total - s.matched, "件", s.total > s.matched ? "is-warn" : "is-ok", open ? `確認待ち ${open}件` : ""),
+      ]),
+      el("dl", { cls: "kv" }, Object.values(s.byKind).flatMap((k) => [el("dt", { text: k.label }), el("dd", { text: `${k.total}件のうち ずれ ${k.total - k.matched}件` })])),
+      ...s.info.map((t) => el("p", { cls: "notice info", text: t })),
+    );
+  } else if (discs.length) {
+    card.append(el("dl", { cls: "nums" }, [num("ずれ", discs.length, "件", "is-warn"), num("確認待ち", open, "件", open ? "is-warn" : "is-ok")]));
+  } else if (!statements.length) {
+    card.append(el("p", { cls: "state", text: "まだ明細がありません。上で明細を読み込んでから照合してください" }));
+  } else {
+    card.append(el("p", { cls: "state", text: "明細を読み込みました。「照合する」を押すと、プログラムが突き合わせます" }));
+  }
+  if (s && s.total === s.matched) card.append(el("p", { cls: "notice ok", text: "台帳・明細・通帳がすべて合っています" }));
+  card.append(msg, el("div", { cls: "btns" }, [go]));
+  if (discs.length) {
+    card.append(
+      el("h3", { cls: "draft-label", text: "ずれ（1件ずつ確かめてください）" }),
+      el("div", { cls: "mail-list" }, discs.map(discCard)),
+    );
+  }
+
+  async function reconcile() {
+    go.disabled = true;
+    team([], "プログラムが突き合わせています");
+    msg.replaceChildren(loading("プログラムが突き合わせています"));
+    try {
+      const r = await api("/api/reconcile", { method: "POST", body: {} });
+      state.moneySummary = r.summary;
+      const n = r.summary.total - r.summary.matched;
+      teamDone(n ? `ずれが ${n}件 ありました。「理由の候補をつくる」で、チームに理由を考えてもらえます` : "すべて合っていました");
+      await showMoney();
+    } catch (err) {
+      teamDone();
+      go.disabled = false;
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  }
+  return card;
+}
+
+function discCard(d) {
+  const st = DISC_STATUS[d.status] ?? DISC_STATUS.open;
+  const card = el("article", { cls: "mail-card", attrs: { id: `disc-${d.id}` } });
+  const reasonBox = el("div");
+  const msg = el("div");
+  const sub = [d.kind_label, d.reservation_id ? `予約 ${d.reservation_id}` : null].filter(Boolean).join("・");
+
+  card.append(
+    el("div", { cls: "card-head" }, [el("h3", { text: d.title }), el("span", { cls: `pill ${st.cls}`, text: st.label })]),
+    el("p", { cls: "lead", text: `${sub}　ずれ ${signedYen(d.diff)}` }),
+    reasonBox,
+  );
+
+  if (!d.reasons) {
+    const make = btn("理由の候補をつくる", makeReasons, "btn small");
+    reasonBox.append(el("div", { cls: "btns" }, [make]));
+  } else {
+    reasonBox.append(...reasonView(d));
+  }
+
+  // オーナーの判断
+  const note = el("textarea", { cls: "text-in note-in", attrs: { "aria-label": "メモ（なくてもよい）", maxlength: "500", placeholder: "メモ（なくてもよい）" } });
+  note.value = d.owner_note ?? "";
+  const acts =
+    d.status === "open"
+      ? [btn("OK（このずれで正しい）", () => resolve("ok"), "btn small"), btn("直した", () => resolve("fixed"), "btn small")]
+      : [btn("確認待ちに戻す", () => resolve("open"), "btn small")];
+  if (d.status === "open") card.append(note);
+  else if (d.owner_note) card.append(el("p", { cls: "lead", text: `メモ：${d.owner_note}` }));
+  card.append(msg, el("div", { cls: "btns" }, acts));
+
+  async function makeReasons() {
+    for (const b of card.querySelectorAll("button")) b.disabled = true;
+    teamWorking((t) => reasonBox.replaceChildren(loading(`${t}（30秒ほど）`)), REASON_STEPS);
+    try {
+      const nd = await api(`/api/discrepancies/${d.id}/reasons`, { method: "POST", body: {} });
+      const r = nd.reasons;
+      teamDone(
+        r?.source !== "ai"
+          ? "AIが使えなかったので、プログラムが数字から分かる候補だけを出しました"
+          : nd.audit?.manual
+            ? "チームで決めきれませんでした。手で確認してください"
+            : `理由の候補ができました（確かめた回数：${nd.audit?.attempts ?? 1}回）。見て OK か「直した」を押してください`,
+      );
+      card.replaceWith(discCard(nd));
+    } catch (err) {
+      teamDone();
+      for (const b of card.querySelectorAll("button")) b.disabled = false;
+      reasonBox.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }), el("div", { cls: "btns" }, [btn("理由の候補をつくる", makeReasons, "btn small")]));
+    }
+  }
+
+  async function resolve(action) {
+    for (const b of card.querySelectorAll("button")) b.disabled = true;
+    try {
+      const nd = await api(`/api/discrepancies/${d.id}`, { method: "POST", body: { action, note: action === "open" ? d.owner_note : note.value } });
+      toast(action === "ok" ? "このずれは正しい、と記録しました" : action === "fixed" ? "直した、と記録しました" : "確認待ちに戻しました");
+      card.replaceWith(discCard(nd));
+    } catch (err) {
+      for (const b of card.querySelectorAll("button")) b.disabled = false;
+      msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  }
+  return card;
+}
+
+function reasonView(d) {
+  const r = d.reasons;
+  const out = [];
+  if (r.source === "ai") {
+    out.push(
+      el("p", { cls: "credits", attrs: { "aria-label": "経理担当が考え、プログラムと監査役が確かめた候補です" } }, [
+        el("span", { text: "考えた" }),
+        el("span", { cls: "role-pill", text: "経理担当" }),
+        el("span", { text: "確かめた" }),
+        el("span", { text: "プログラムと" }),
+        el("span", { cls: "role-pill", text: "監査役" }),
+      ]),
+    );
+  } else {
+    out.push(el("p", { cls: "lead", text: "プログラムが、数字から分かる候補だけを出しました" }));
+  }
+  if (d.audit?.manual) {
+    out.push(el("p", { cls: "notice danger", text: `チームで${d.audit.attempts}回確かめても、決めきれませんでした。下の候補は参考にとどめて、手で確認してください` }));
+  }
+  if (r.candidates?.length) {
+    out.push(
+      el(
+        "ul",
+        { cls: "checks reasons" },
+        r.candidates.map((c) => {
+          const conf = CONF[c.confidence];
+          return el("li", {}, [
+            el("span", { cls: "by", text: `${REASON_JA[c.code] ?? c.code}　${signedYen(c.amount)}` }),
+            conf ? el("span", { cls: `pill ${conf.cls}`, text: conf.label }) : null,
+            el("p", { text: c.basis }),
+            c.explains && c.confidence !== "low" ? el("p", { cls: "reason-note", text: "この理由だけで、ずれ全部の説明がつきます" }) : null,
+            c.check_note ? el("p", { cls: "reason-note", text: c.check_note }) : null,
+          ]);
+        }),
+      ),
+    );
+  } else {
+    out.push(el("p", { cls: "notice warn", text: "数字から分かる理由は見つかりませんでした。予約サイトの明細と台帳を見比べてください" }));
+  }
+  if (r.summary) out.push(el("p", { cls: "notice info", text: `確かめること：${r.summary}` }));
+  if (r.checks?.length) {
+    out.push(
+      el("details", {}, [
+        el("summary", { text: `チームの確かめ（${Math.max(...r.checks.map((c) => c.attempt))}回）` }),
+        el(
+          "ul",
+          { cls: "checks" },
+          r.checks.map((c) =>
+            el("li", {}, [
+              el("span", { cls: "by", text: `${c.attempt}回目・${c.by === "kansa" ? "監査役" : "プログラム"}` }),
+              c.problems?.length ? `直す点：${c.problems.join("／")}` : "問題なし",
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+  return out;
+}
+
 // ---- タブ ----
 
-const SHOW = { tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail };
+const SHOW = { tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney };
 
 function selectTab(name) {
   for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));

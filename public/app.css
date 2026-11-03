@@ -333,3 +333,12 @@ tr.changed td:last-child { font-weight: 700; color: var(--action); }
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s2) var(--s4); margin-top: var(--s3); }
 .field label { display: block; font-size: 14px; color: var(--ink-sub); }
 .field .text-in, .field select { margin-top: var(--s1); width: 100%; }
+
+/* お金の照合（M1〜M4） */
+.stmt-list { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.file-in { width: 100%; min-height: 44px; margin-top: var(--s1); font-size: 15px; }
+.field label .pill { margin-left: var(--s2); }
+.reasons li p { margin-top: var(--s1); }
+.reasons .pill { margin-left: var(--s2); }
+.reason-note { font-size: 14px; color: var(--ink-sub); }
+textarea.note-in { min-height: 64px; }
