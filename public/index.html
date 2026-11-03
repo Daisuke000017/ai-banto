@@ -28,7 +28,8 @@
   </header>
 
   <nav class="tabs" aria-label="画面の切り替え">
-    <button type="button" class="tab" data-tab="tax" aria-selected="true">宿泊税</button>
+    <button type="button" class="tab" data-tab="kpi" aria-selected="true">今月の数字</button>
+    <button type="button" class="tab" data-tab="tax" aria-selected="false">宿泊税</button>
     <button type="button" class="tab" data-tab="minpaku" aria-selected="false">民泊の手続き</button>
     <button type="button" class="tab" data-tab="guest" aria-selected="false">ゲスト連絡</button>
     <button type="button" class="tab" data-tab="mail" aria-selected="false">予約メール</button>
@@ -36,7 +37,8 @@
   </nav>
 
   <main>
-    <section id="panel-tax" class="panel" aria-label="宿泊税"></section>
+    <section id="panel-kpi" class="panel" aria-label="今月の数字"></section>
+    <section id="panel-tax" class="panel" aria-label="宿泊税" hidden></section>
     <section id="panel-minpaku" class="panel" aria-label="民泊の手続き" hidden></section>
     <section id="panel-guest" class="panel" aria-label="ゲスト連絡" hidden></section>
     <section id="panel-mail" class="panel" aria-label="予約メール" hidden></section>

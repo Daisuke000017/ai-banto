@@ -17,7 +17,7 @@ const STATUS = {
 };
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
-const state = { today: null, taxMonth: null, period: null, selectedRes: null, loaded: {} };
+const state = { today: null, kpiMonth: null, taxMonth: null, period: null, selectedRes: null, loaded: {} };
 
 // ---- 小さな道具 ----
 
@@ -131,6 +131,152 @@ function num(label, value, unit, cls = "", sub = "") {
     el("dt", { text: label }),
     el("dd", {}, [String(value), unit ? el("small", { text: unit }) : null]),
     sub ? el("p", { cls: "num-sub", text: sub }) : null,
+  ]);
+}
+
+// ---- 今月の数字（M8） ----
+// 数えるのはプログラム（/api/kpis）。売上は「泊まった日」で数え、宿泊税は売上に入れない。
+
+const pct = (v) => `${Number(v).toFixed(1)}`;
+const diffYen = (a, b) => (a === b ? "同じ" : `${a > b ? "＋" : "−"}${yen(Math.abs(a - b))}円`);
+
+async function showKpi() {
+  const p = $("panel-kpi");
+  p.replaceChildren(loading("プログラムが数えています"));
+  try {
+    const d = await api(`/api/kpis?month=${encodeURIComponent(state.kpiMonth)}`);
+    if (d.total === 0 && d.room_nights === 0) {
+      p.replaceChildren(kpiEmpty(d));
+      return;
+    }
+    p.replaceChildren(kpiCard(d), kpiOtaCard(d), kpiCountryCard(d));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showKpi));
+  }
+}
+
+function kpiMonthPicker() {
+  const now = state.today.slice(0, 7);
+  const sel = el("select", { attrs: { id: "kpi-month" } });
+  // これからの2か月（予約が入っている分）から、半年前まで
+  for (let i = 2; i >= -6; i--) {
+    const m = addMonths(now, i);
+    sel.append(el("option", { text: m === now ? `${jpMonth(m)}（今月）` : jpMonth(m), attrs: { value: m, selected: m === state.kpiMonth } }));
+  }
+  sel.addEventListener("change", () => {
+    state.kpiMonth = sel.value;
+    showKpi();
+  });
+  return el("div", { cls: "pick" }, [el("label", { text: "月", attrs: { for: "kpi-month" } }), sel]);
+}
+
+function kpiHead(d, lead) {
+  return el("div", { cls: "card-head" }, [
+    el("div", {}, [el("h2", { text: `${jpMonth(d.month)}の数字` }), el("p", { cls: "lead", text: lead })]),
+    kpiMonthPicker(),
+  ]);
+}
+
+function kpiEmpty(d) {
+  return el("article", { cls: "card" }, [
+    kpiHead(d, "泊まった日で数えています"),
+    el("p", { cls: "state", text: "この月に泊まる予約はまだありません" }),
+    el("div", { cls: "btns" }, [btn("予約メールを開く", () => selectTab("mail"))]),
+  ]);
+}
+
+function kpiCard(d) {
+  const ahead = d.sales_upcoming > 0;
+  const estimated = d.fee_estimate > 0;
+  const netLabel = ahead || estimated ? "手取り（見込み）" : "手取り";
+  const netSub = d.fee == null ? "手数料が分からない予約があります" : `売上 ${yen(d.total)}円 − 手数料 ${yen(d.fee)}円${estimated ? "（見込みを含む）" : ""}`;
+  const prev = d.previous;
+  const card = el("article", { cls: "card" }, [
+    kpiHead(d, "泊まった日で数えています。月をまたぐ予約は、泊まった夜の分だけこの月に入れます"),
+    el("dl", { cls: "nums kpi-nums" }, [
+      num(netLabel, d.net == null ? "—" : yen(d.net), d.net == null ? "" : "円", "kpi-main", netSub),
+      num("売上", yen(d.total), "円", "", `${jpMonth(prev.month)}より ${diffYen(d.total, prev.total)}`),
+      num("部屋が埋まった割合", pct(d.occupancy_pct), "%", "", `${d.rooms}部屋×${d.days}日のうち ${d.room_nights}泊分`),
+      num("1部屋1泊の平均", d.adr == null ? "—" : yen(d.adr), d.adr == null ? "" : "円", "", prev.adr == null ? "" : `${jpMonth(prev.month)} ${yen(prev.adr)}円`),
+    ]),
+  ]);
+
+  // 泊まり済み／これから（今日より前の夜＝泊まり済み）
+  if (d.sales > 0) {
+    const bar = el("progress", { attrs: { max: d.sales, value: d.sales_stayed, "aria-label": "売上のうち泊まり済みの分" } });
+    card.append(
+      el("div", { cls: "meter kpi-meter" }, [
+        bar,
+        el("p", { text: ahead ? `泊まり済み ${yen(d.sales_stayed)}円 ／ これから ${yen(d.sales_upcoming)}円（${jpDate(d.today, false)}より後の夜）` : `すべて泊まり済みです（${yen(d.sales_stayed)}円）` }),
+      ]),
+    );
+  }
+  if (d.cancel_fees > 0) card.append(el("p", { cls: "notice info", text: `売上のうち ${yen(d.cancel_fees)}円 はキャンセル料です（泊まっていないので、埋まった割合と平均には入れていません）` }));
+
+  // 手数料の出どころ
+  if (d.fee == null) {
+    card.append(el("p", { cls: "notice warn", text: "手数料が分からない予約があります。お金の照合で予約サイトの明細を読み込むと出ます" }));
+  } else if (estimated) {
+    const rates = Object.entries(d.fee_rates).map(([k, v]) => `${OTA[k] ?? k} ${pct(v)}%`).join("・");
+    card.append(el("p", { cls: "notice info", text: `手数料の一部は、明細がまだ無いので見込みです（これまでの明細の割合：${rates}）` }));
+  }
+  if (d.unknown_tax_included > 0) card.append(el("p", { cls: "notice warn", text: `宿泊税の預かった額が分からない予約が ${d.unknown_tax_included}件 あります。その分は宿泊税を引かずに売上に入れています` }));
+  card.append(el("p", { cls: "notice info", text: `宿泊税 ${yen(d.lodging_tax)}円 は売上に入れていません（ゲストから預かったお金です）` }));
+
+  // 照合は1行だけ（入金のずれがあるときだけ目立たせる）
+  if (d.open_discrepancies > 0) {
+    card.append(el("div", { cls: "notice warn kpi-link" }, [el("span", { text: `入金のずれが ${d.open_discrepancies}件 あります` }), btn("お金の照合を開く", () => selectTab("money"), "btn small")]));
+  } else if (!d.statements_loaded) {
+    card.append(el("div", { cls: "notice info kpi-link" }, [el("span", { text: "予約サイトの明細を読み込むと、手数料が実際の額になります" }), btn("お金の照合を開く", () => selectTab("money"), "btn small")]));
+  }
+  return card;
+}
+
+function kpiOtaCard(d) {
+  const feeText = (o) => (o.fee == null ? "分からない" : `${yen(o.fee)}${o.fee_estimate > 0 ? "（見込み）" : ""}`);
+  const tbody = el("tbody");
+  for (const o of d.by_ota) {
+    tbody.append(
+      el("tr", {}, [
+        el("td", { text: OTA[o.ota] ?? o.ota }),
+        el("td", { cls: "n", text: `${o.room_nights}泊` }),
+        el("td", { cls: "n", text: yen(o.sales + o.cancel_fees) }),
+        el("td", { cls: "n", text: feeText(o) }),
+        el("td", { cls: "n", text: o.net == null ? "—" : yen(o.net) }),
+      ]),
+    );
+  }
+  tbody.append(
+    el("tr", { cls: "total" }, [
+      el("td", { text: "合計" }),
+      el("td", { cls: "n", text: `${d.room_nights}泊` }),
+      el("td", { cls: "n", text: yen(d.total) }),
+      el("td", { cls: "n", text: d.fee == null ? "分からない" : yen(d.fee) }),
+      el("td", { cls: "n", text: d.net == null ? "—" : yen(d.net) }),
+    ]),
+  );
+  const head = el("tr", {}, ["予約サイト", "泊数", "売上（円）", "手数料（円）", "手取り（円）"].map((t, i) => el("th", { cls: i ? "n" : "", text: t, attrs: { scope: "col" } })));
+  const rows = [["予約サイト", "この月の泊数", "売上（円）", "手数料（円）", "手数料の出どころ", "手取り（円）"]];
+  for (const o of d.by_ota) rows.push([OTA[o.ota] ?? o.ota, o.room_nights, o.sales + o.cancel_fees, o.fee ?? "分からない", o.ota === "direct" ? "かからない" : o.fee_estimate > 0 ? "見込みを含む" : "明細", o.net ?? ""]);
+  rows.push(["合計", d.room_nights, d.total, d.fee ?? "分からない", "", d.net ?? ""]);
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "予約サイトごと" }),
+    el("p", { cls: "lead", text: "どこから来た予約が、いくら残ったか" }),
+    el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), tbody])]),
+    el("div", { cls: "btns" }, [btn("CSVを保存", () => downloadCsv(`今月の数字_${d.month}.csv`, rows))]),
+  ]);
+}
+
+function kpiCountryCard(d) {
+  const total = d.nationalities.reduce((t, n) => t + n.persons, 0);
+  const list = el("ul", { cls: "kpi-countries" });
+  for (const n of d.nationalities) {
+    list.append(el("li", {}, [el("span", { text: COUNTRY[n.code] ?? n.code }), el("strong", { text: `${n.persons}人` })]));
+  }
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "ゲストの国・地域" }),
+    el("p", { cls: "lead", text: `この月に泊まったゲスト ${total}人（月をまたぐ予約は両方の月に入ります）` }),
+    list,
   ]);
 }
 
@@ -1265,7 +1411,7 @@ function reasonView(d) {
 
 // ---- タブ ----
 
-const SHOW = { tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney };
+const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney };
 
 function selectTab(name) {
   for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
@@ -1285,16 +1431,17 @@ async function start() {
     $("today").textContent = jpDate(d.today);
   } catch (err) {
     $("inn-name").textContent = "読み込めませんでした";
-    $("panel-tax").replaceChildren(errorBox(err, () => location.reload()));
+    $("panel-kpi").replaceChildren(errorBox(err, () => location.reload()));
     return;
   }
   // 宿泊税は先月分、定期報告は期限がいちばん近い期間（終わったばかりの期間）を最初に出す
   const month = state.today.slice(0, 7);
+  state.kpiMonth = month;
   state.taxMonth = addMonths(month, -1);
   const curStart = Number(month.slice(5, 7)) % 2 === 1 ? addMonths(month, -1) : month;
   const prevStart = addMonths(curStart, -2);
   state.period = `${prevStart}_${addMonths(prevStart, 1).slice(5, 7)}`;
-  selectTab("tax");
+  selectTab("kpi");
 }
 
 start();

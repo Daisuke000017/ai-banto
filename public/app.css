@@ -342,3 +342,19 @@ tr.changed td:last-child { font-weight: 700; color: var(--action); }
 .reasons .pill { margin-left: var(--s2); }
 .reason-note { font-size: 14px; color: var(--ink-sub); }
 textarea.note-in { min-height: 64px; }
+
+/* 今月の数字（M8）：手取りを主役に。ほかの3つは脇役 */
+.kpi-nums { grid-template-columns: repeat(3, 1fr); }
+.kpi-nums .num dd { font-size: 28px; white-space: nowrap; }
+.num.kpi-main { grid-column: 1 / -1; background: var(--ok-bg); }
+.kpi-nums .num.kpi-main dd { color: var(--ok); font-size: 40px; white-space: normal; }
+.kpi-meter progress { width: 100%; }
+.kpi-link { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); }
+tbody tr.total td { font-weight: 700; }
+.kpi-countries { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); padding: 0; }
+.kpi-countries li { display: flex; gap: var(--s2); align-items: baseline; background: var(--bg); border-radius: 999px; padding: var(--s1) var(--s3); }
+.kpi-countries strong { font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .kpi-nums { grid-template-columns: 1fr; }
+  .kpi-nums .num.kpi-main dd { font-size: 32px; }
+}

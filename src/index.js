@@ -1,5 +1,6 @@
 // AI番頭 Worker
 // 読むだけ（GET）
+// - /api/kpis?month=YYYY-MM             今月の数字（売上・手取り・稼働率など。泊まった日で数える）
 // - /api/tax?month=YYYY-MM              宿泊税の集計表（下書き）
 // - /api/minpaku/counter                180日カウンター
 // - /api/minpaku/report?period=         定期報告の4項目（例：2026-08_09）
@@ -32,6 +33,7 @@
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
+import { kpiView } from "./lib/kpis.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
   confirmBookingEmail,
@@ -166,6 +168,18 @@ const nowIso = (env) => (env.DEMO_TODAY ? `${env.DEMO_TODAY}T09:00:00+09:00` : n
 async function handleGet(url, env, today) {
   const p = url.pathname;
   if (p.startsWith("/api/booking-emails")) return handleBookingEmailGet(url, env);
+  if (p === "/api/kpis") {
+    const month = url.searchParams.get("month") ?? monthOf(today);
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
+    const inn = await loadInn(env);
+    const [res, lines, open] = await Promise.all([
+      env.DB.prepare(`SELECT ${RES_COLUMNS}, amount_gross, ota_reservation_no FROM reservations ORDER BY checkin_date, id`).all(),
+      env.DB.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM discrepancies WHERE status = 'open'").first(),
+    ]);
+    const view = kpiView({ reservations: res.results, lines: lines.results, rooms: Number(inn.rooms), month, today, rules: rulesFromInnProfile(inn) });
+    return json({ ...view, open_discrepancies: open?.n ?? 0, statements_loaded: lines.results.length > 0 });
+  }
   if (p === "/api/tax") {
     const month = url.searchParams.get("month") ?? monthOf(today);
     if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
