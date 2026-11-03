@@ -126,10 +126,11 @@ function downloadCsv(name, rows) {
   toast(`${name} をつくりました。提出はご本人が行います`);
 }
 
-function num(label, value, unit, cls = "") {
+function num(label, value, unit, cls = "", sub = "") {
   return el("div", { cls: `num ${cls}` }, [
     el("dt", { text: label }),
     el("dd", {}, [String(value), unit ? el("small", { text: unit }) : null]),
+    sub ? el("p", { cls: "num-sub", text: sub }) : null,
   ]);
 }
 
@@ -162,7 +163,9 @@ function taxMonthPicker(rules) {
 }
 
 function taxCard(d) {
-  const diffCls = d.diff < 0 ? "is-danger" : d.diff > 0 || d.unknown_tax > 0 ? "is-warn" : "is-ok";
+  // 分からない分があるだけなら「差」は灰色のまま（黄色は下の注意文だけ）。理由は箱の中に小さく書く
+  const diffCls = d.diff < 0 ? "is-danger" : d.diff > 0 ? "is-warn" : d.unknown_tax > 0 ? "" : "is-ok";
+  const diffSub = d.unknown_tax > 0 ? `分からない ${yen(d.unknown_tax)}円 は除く` : "";
   const card = el("article", { cls: "card" }, [
     el("div", { cls: "card-head" }, [
       el("div", {}, [
@@ -175,7 +178,7 @@ function taxCard(d) {
       num("人泊", d.person_nights, "人泊"),
       num("宿泊税", yen(d.tax_amount), "円"),
       num("預かった額", yen(d.collected_amount), "円"),
-      num(d.diff < 0 ? "足りない" : "差", yen(Math.abs(d.diff)), "円", diffCls),
+      num(d.diff < 0 ? "足りない" : "差", yen(Math.abs(d.diff)), "円", diffCls, diffSub),
     ]),
   ]);
   if (d.diff < 0) card.append(el("p", { cls: "notice danger", text: `預かった額が ${yen(-d.diff)}円 足りません。下の内訳で予約を確かめてください` }));
@@ -199,16 +202,19 @@ function taxBreakdown(d) {
   for (const b of d.breakdown) {
     tbody.append(
       el("tr", {}, [
-        el("td", {}, [el("span", { text: b.reservation_id }), b.note ? el("span", { cls: "note", text: b.note }) : null]),
-        el("td", { text: OTA[b.ota] ?? b.ota }),
+        // スマホ幅では「予約サイト」の列を隠し、予約番号の下に小さく出す（金額の2列を画面に収めるため）
+        el("td", {}, [el("span", { text: b.reservation_id }), el("span", { cls: "sub-ota", text: OTA[b.ota] ?? b.ota })]),
+        el("td", { cls: "c-ota", text: OTA[b.ota] ?? b.ota }),
         el("td", { cls: "n", text: `${b.nights_in_month}泊` }),
         el("td", { cls: "n", text: b.person_nights }),
         el("td", { cls: "n", text: `${yen(b.tax)}円` }),
         el("td", { cls: "n", text: b.collected == null ? "分からない" : `${yen(b.collected)}円` }),
       ]),
     );
+    // メモは狭い「予約」の欄に入れず、その行の下に表の幅いっぱいで出す（スマホで1文字ずつ縦に並ばないように）
+    if (b.note) tbody.append(el("tr", { cls: "note-row" }, [el("td", { cls: "note", text: b.note, attrs: { colspan: "6" } })]));
   }
-  const head = el("tr", {}, ["予約", "予約サイト", "泊数", "人泊", "宿泊税", "預かった額"].map((h, i) => el("th", { cls: i >= 2 ? "n" : "", text: h })));
+  const head = el("tr", {}, ["予約", "予約サイト", "泊数", "人泊", "宿泊税", "預かった額"].map((h, i) => el("th", { cls: i >= 2 ? "n" : i === 1 ? "c-ota" : "", text: h })));
   return el("article", { cls: "card" }, [
     el("h2", { text: "内訳（予約ごと）" }),
     el("p", { cls: "lead", text: d.breakdown.length ? "月をまたぐ予約は、この月の夜だけを数えています" : "" }),
@@ -331,13 +337,17 @@ function resRow(r) {
   const n = nightsBetween(r.checkin_date, r.checkout_date);
   const row = el("div", { cls: `res${state.selectedRes === r.id ? " selected" : ""}`, attrs: { "data-id": r.id } }, [
     el("div", { cls: "res-main" }, [
-      el("p", { cls: "res-date", text: `${jpDate(r.checkin_date)} → ${jpDate(r.checkout_date)}（${n}泊）` }),
+      el("p", { cls: "res-date" }, [
+        el("span", { text: `${jpDate(r.checkin_date)} →` }), " ",
+        el("span", { text: jpDate(r.checkout_date) }),
+        el("span", { text: `（${n}泊）` }),
+      ]),
       el("p", { cls: "res-sub", text: `${r.guests}人・${LANG[r.language] ?? r.language}・${OTA[r.ota] ?? r.ota}` }),
     ]),
     el("span", { cls: `pill ${st.cls}`, text: `案内：${st.label}` }),
     r.draft_status
-      ? btn("開く", () => openDraft(r.id), "btn small")
-      : btn("案内をつくる", () => makeDraft(r.id), "btn small primary"),
+      ? btn("開く", () => openDraft(r.id, true), "btn small")
+      : btn("案内をつくる", () => makeDraft(r.id), "btn small"),
   ]);
   return row;
 }
@@ -347,7 +357,7 @@ function markSelected(id) {
   for (const row of document.querySelectorAll(".res")) row.classList.toggle("selected", row.dataset.id === id);
 }
 
-async function openDraft(id) {
+async function openDraft(id, scroll = false) {
   markSelected(id);
   const holder = $("draft-holder");
   holder.replaceChildren(loading("下書きを読んでいます"));
@@ -363,6 +373,8 @@ async function openDraft(id) {
       return;
     }
     holder.replaceChildren(draftCard(d.drafts[0]));
+    // 一覧で「開く」を押したときは、下書きの見出しと OK が見える所まで動かす
+    if (scroll) holder.scrollIntoView({ behavior: "smooth", block: "start" });
     holder.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     holder.replaceChildren(errorBox(err, () => openDraft(id)));
@@ -431,7 +443,16 @@ function draftCard(d) {
     el("div", { cls: "card-head" }, [
       el("div", {}, [
         el("h2", { text: `到着案内（${LANG[d.language] ?? d.language}）` }),
-        el("p", { cls: "lead", text: isAi ? "宿泊担当が書き、監査役とプログラムが確かめた下書きです" : "決まった文の下書きです" }),
+        // 誰が書き、誰が確かめたかを上の帯と同じ形の札で見せる
+        isAi
+          ? el("p", { cls: "credits", attrs: { "aria-label": "宿泊担当が書き、監査役とプログラムが確かめた下書きです" } }, [
+              el("span", { text: "書いた" }),
+              el("span", { cls: "role-pill", text: "宿泊担当" }),
+              el("span", { text: "確かめた" }),
+              el("span", { cls: "role-pill", text: "監査役" }),
+              el("span", { text: "とプログラム" }),
+            ])
+          : el("p", { cls: "lead", text: "決まった文の下書きです" }),
       ]),
       el("span", { cls: `pill ${st.cls}`, text: st.label }),
     ]),
@@ -439,9 +460,11 @@ function draftCard(d) {
   if (d.needs_owner_check) {
     card.append(el("p", { cls: "notice warn", text: "「【オーナー確認】」が残っています。宿泊税の行を「直す」で書き直してから OK を押してください" }));
   }
-  card.append(body, actions);
+  card.append(actions, body);
 
   function viewMode() {
+    // 読むときは OK・コピーを下書きの上に置く（長い文の下に埋もれないように）
+    body.before(actions);
     body.replaceChildren(maskedText(d.text));
     if (d.language !== "ja" && d.ja_text) body.append(el("details", {}, [el("summary", { text: "日本語の意味" }), maskedText(d.ja_text)]));
     if (d.back_translation) body.append(el("details", {}, [el("summary", { text: "日本語に訳し戻した文（意味がずれていないか）" }), maskedText(d.back_translation)]));
@@ -479,6 +502,8 @@ function draftCard(d) {
     const ta = el("textarea", { attrs: { "aria-label": "案内の文", maxlength: "8000" } });
     ta.value = d.text;
     const problems = el("div");
+    // 直すときは、書き終えた所で押せるよう文の下に置く
+    body.after(actions);
     body.replaceChildren(
       el("p", { cls: "notice info", text: `「${MASK}」の所に、コピーのとき暗証番号が入ります。消さないでください。暗証番号そのものは書かないでください` }),
       ta,
