@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI番頭 見本</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+  <link rel="stylesheet" href="sample.css">
+</head>
+<body>
+<div class="sheet">
+
+  <header class="sheet-head">
+    <h1>AI番頭　画面の方向の見本（社長の確認用）</h1>
+    <p>動きはありません。見た目と並べ方だけの見本です。数字はすべて、今のアプリのプログラムが数えた10月の数字（デモの今日＝10月10日）をそのまま使っています。</p>
+  </header>
+
+  <section class="rules" aria-label="ルール">
+    <h2>ルール（docs/DESIGN.md に追加したもの）</h2>
+    <p class="rule"><b>文字は 18px が基本</b><span>補足 16px、いちばん小さくても 15px。数字の主役は 40px を1つだけ。</span></p>
+    <p class="rule"><b>押すところは高さ 56px 以上</b><span>必ず言葉つき。濃い色のボタンは1画面に1つ。押せないものはボタンの形にしない。</span></p>
+    <p class="rule"><b>タブをやめて「ホーム」に</b><span>6つの仕事を1列で並べる。どの画面にも「← ホームへ戻る」。横スクロールなし。</span></p>
+    <p class="rule"><b>色だけで伝えない</b><span>グラフには必ず表（名前・金額・%）を付ける。増えた・減ったも言葉で書く。</span></p>
+    <p class="rule"><b>数えていない数は出さない</b><span>ホームの行の数字もプログラムが数えたものだけ。無いものは説明の言葉にする。</span></p>
+  </section>
+
+  <section class="bgs" aria-label="背景の色 3案">
+    <p class="bgs-title">背景の色　3案（同じホーム画面の上の部分）</p>
+    <p class="bgs-lead">前の見本は少し黄みのある灰色でした。白いカードとの差がぼんやりして、くすんで見えるのが原因です。社長の決定で B（ごく薄い青）にしました。下の①〜③は B で作っています。</p>
+    <div class="phones">
+    <section class="mock" aria-label="背景 A　真っ白（WESTER の作り方）">
+      <p class="mock-label">A　真っ白（WESTER の作り方）</p>
+      <p class="mock-note">いちばん明るく、文字がくっきり。カードの区切りは細い線だけになるので、項目が増えると境目が分かりにくくなります。</p>
+      <div class="phone bg-a">
+        <header class="top">
+          <p class="brand">AI番頭</p>
+          <p class="inn">しおさいの家</p>
+          <p class="today">デモの今日：2026年10月10日（土）</p>
+        </header>
+        <div class="body">
+          <p class="h2">きょうの仕事をえらぶ</p>
+          <ul class="menu">
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+              <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact">10月の売上 <b>144,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
+              <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact">10月　<b>21人泊・4,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+              <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact">180日のうち 残り<b>140日</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    <section class="mock" aria-label="背景 B　ごく薄い青">
+      <p class="mock-label">B　ごく薄い青<span class="pick">決定</span></p>
+      <p class="mock-note">紺のボタンと同じ系統で、落ち着いて「きちんと」見えます。白いカードが浮き出て、ひとかたまりが分かりやすい。</p>
+      <div class="phone bg-b">
+        <header class="top">
+          <p class="brand">AI番頭</p>
+          <p class="inn">しおさいの家</p>
+          <p class="today">デモの今日：2026年10月10日（土）</p>
+        </header>
+        <div class="body">
+          <p class="h2">きょうの仕事をえらぶ</p>
+          <ul class="menu">
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+              <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact">10月の売上 <b>144,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
+              <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact">10月　<b>21人泊・4,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+              <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact">180日のうち 残り<b>140日</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    <section class="mock" aria-label="背景 C　生成り（あたたかい白）">
+      <p class="mock-label">C　生成り（あたたかい白）</p>
+      <p class="mock-note">宿らしいやわらかさが出ます。ただ白いカードとの差が小さく、画面によっては少し黄ばんで見えます。</p>
+      <div class="phone bg-c">
+        <header class="top">
+          <p class="brand">AI番頭</p>
+          <p class="inn">しおさいの家</p>
+          <p class="today">デモの今日：2026年10月10日（土）</p>
+        </header>
+        <div class="body">
+          <p class="h2">きょうの仕事をえらぶ</p>
+          <ul class="menu">
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+              <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact">10月の売上 <b>144,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
+              <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact">10月　<b>21人泊・4,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+              <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact">180日のうち 残り<b>140日</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    </div>
+  </section>
+
+  <div class="phones">
+
+    <!-- ① オーナーのホーム -->
+    <section class="mock" aria-label="見本1 オーナーのホーム">
+      <p class="mock-label">① オーナーのホーム（今のタブの代わり）</p>
+      <p class="mock-note">WESTER の一覧の作り方。行ごとに「いまの数字」が1行で見えるので、開かなくても様子が分かります。チームは押せない名札にしました。</p>
+      <div class="phone">
+        <header class="top">
+          <p class="brand">AI番頭</p>
+          <p class="inn">しおさいの家</p>
+          <p class="today">デモの今日：2026年10月10日（土）</p>
+          <ul class="team" aria-label="チーム">
+            <li>番頭</li>
+            <li class="on">経理担当</li>
+            <li>監査役</li>
+            <li>宿泊担当</li>
+            <li>経営企画</li>
+          </ul>
+          <p class="team-now">いま働いています：経理担当が明細の列の見出しを読んでいます</p>
+        </header>
+        <div class="body">
+          <p class="h2">きょうの仕事をえらぶ</p>
+          <ul class="menu">
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+              <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact">10月の売上 <b>144,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
+              <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact">10月　<b>21人泊・4,200円</b></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+              <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact">180日のうち 残り<b>140日</b></span>
+                <span class="mini-bar" aria-hidden="true"><i class="used" style="width:22.2%"></i></span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span>
+              <span class="row-text"><span class="row-name">ゲスト連絡</span><span class="row-fact">案内の下書きをつくる</span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+              <span class="row-text"><span class="row-name">予約メール</span><span class="row-fact">予約サイトのメールを読み取る</span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+            <li><div class="row">
+              <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M4 8h16"/><path d="M4 8l-2 6a3 3 0 0 0 4 0zM20 8l-2 6a3 3 0 0 0 4 0z"/></svg></span>
+              <span class="row-text"><span class="row-name">お金の照合</span><span class="row-fact">明細と予約を照らし合わせる</span></span>
+              <span class="chev" aria-hidden="true">›</span>
+            </div></li>
+          </ul>
+        </div>
+        <footer class="notes"><ul>
+          <li>下書きです。確認と提出・送信はご本人が行います</li>
+          <li>予約・宿泊者・宿はデモ用の架空データです。バスの時刻と避難先は実在の公開データ（出典は各画面に表示）です</li>
+          <li>AIの処理は米国のAnthropic社で行います</li>
+        </ul></footer>
+      </div>
+    </section>
+
+    <!-- ② 今月の数字 -->
+    <section class="mock" aria-label="見本2 今月の数字">
+      <p class="mock-label">② 今月の数字（マネーフォワード家計簿の見せ方）</p>
+      <p class="mock-note">1枚目は売上だけ（決まっている数字）。2枚目に手数料を引いた「手元に残るお金（見込み）」をレシートの形で。ドーナツの図には必ず表を付けています。</p>
+      <div class="phone">
+        <p class="back">← ホームへ戻る</p>
+        <div class="body">
+          <p class="h2">今月の数字</p>
+          <div class="months">
+            <span class="btn">◀ 9月</span>
+            <span class="now">2026年10月</span>
+            <span class="btn">11月 ▶</span>
+          </div>
+
+          <div class="card hero-card">
+            <p class="hero-label">10月の売上</p>
+            <p class="hero">144,200<span class="unit">円</span></p>
+            <p class="vs">9月より <b>+28,000円</b></p>
+            <div class="split" aria-hidden="true"><i class="a" style="width:37%"></i><i class="b" style="width:63%"></i></div>
+            <ul class="split-legend">
+              <li><span class="sw c1"></span><span>泊まり済み</span><b>53,400円</b></li>
+              <li><span class="sw c3"></span><span>これから</span><b>90,800円</b></li>
+            </ul>
+            <p class="sub">宿泊税 4,200円は預かったお金なので、売上に入れていません。</p>
+          </div>
+
+          <div class="card">
+            <p class="card-title">手元に残るお金 <span class="tag-est">見込み</span></p>
+            <dl class="receipt">
+              <div><dt>売上</dt><dd>144,200円</dd></div>
+              <div><dt>キャンセル料</dt><dd>0円</dd></div>
+              <div class="minus"><dt>予約サイトの手数料</dt><dd>−11,580円</dd></div>
+              <div class="total keep-total"><dt>手取り</dt><dd>132,620<span class="unit">円</span></dd></div>
+            </dl>
+            <p class="sub">予約サイトの明細がまだ来ていないので、手数料は割合から見込んでいます。明細が届いたら正しい額に変わります。</p>
+          </div>
+
+          <div class="card">
+            <p class="card-title">どこから予約が入ったか</p>
+            <div class="donut-wrap">
+              <svg class="donut" viewBox="0 0 120 120" role="img" aria-label="Airbnb 60%、Booking.com 40%">
+                <g transform="rotate(-90 60 60)" fill="none" stroke-width="22">
+                  <circle cx="60" cy="60" r="48" stroke="#6FA8DC"/>
+                  <circle cx="60" cy="60" r="48" stroke="#1F4E79" stroke-dasharray="179.85 301.59"/>
+                </g>
+                <text x="60" y="66" text-anchor="middle" font-size="15" font-weight="700" fill="#1E2226">売上</text>
+              </svg>
+              <ul class="legend">
+                <li><span class="sw c1"></span><span class="lg-name">Airbnb</span><span class="lg-pct">60%</span>
+                  <span class="lg-amt"><span>2件・4泊</span><span>86,000円</span></span></li>
+                <li><span class="sw c2"></span><span class="lg-name">Booking.com</span><span class="lg-pct">40%</span>
+                  <span class="lg-amt"><span>1件・3泊</span><span>58,200円</span></span></li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="card">
+            <dl class="facts">
+              <div><dt>部屋が埋まった割合<small>2部屋×31日のうち 7泊</small></dt><dd>11.3<span class="unit">%</span></dd></div>
+              <div><dt>1部屋1泊の平均</dt><dd>20,600<span class="unit">円</span></dd></div>
+            </dl>
+          </div>
+
+          <p style="margin-top:12px"><span class="btn wide">予約ごとの内訳を開く</span></p>
+        </div>
+        <footer class="notes"><ul>
+          <li>下書きです。確認と提出・送信はご本人が行います</li>
+          <li>予約・宿泊者・宿はデモ用の架空データです。バスの時刻と避難先は実在の公開データ（出典は各画面に表示）です</li>
+          <li>AIの処理は米国のAnthropic社で行います</li>
+        </ul></footer>
+      </div>
+    </section>
+
+    <!-- ③ ゲストのホーム（方向だけ） -->
+    <section class="mock" aria-label="見本3 ゲストのホーム">
+      <p class="mock-label">③ ゲストのホーム（方向だけ・11/5 に作る画面）</p>
+      <p class="mock-note">Grab の「大きなしるしのタイル」はゲスト画面だけに使います。言葉が分からなくても、しるしで押せるように。時刻などの中身はまだ入れていません。</p>
+      <div class="phone">
+        <header class="g-top">
+          <p class="inn">Shiosai House</p>
+          <p class="today">Welcome</p>
+          <div class="lang" aria-label="言語">
+            <span>한국어</span><span>繁體中文</span><span class="on">English</span><span>日本語</span>
+          </div>
+        </header>
+        <div class="body">
+          <div class="tiles">
+            <div class="tile"><span class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9H3z"/><path d="M10 20v-6h4v6"/></svg></span>Arrival<br>guide</div>
+            <div class="tile"><span class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M8 21v-3M16 21v-3"/><circle cx="8" cy="14.5" r=".6"/><circle cx="16" cy="14.5" r=".6"/></svg></span>Bus</div>
+            <div class="tile sos"><span class="big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg></span>Emergency</div>
+          </div>
+          <div class="ask"><span>Can I get there and back?</span><span aria-hidden="true">›</span></div>
+          <p class="g-note">（見本の注）いちばん大事な「行って戻れるか」だけを濃い色にします。もしものときのタイルは赤のしるし＋言葉で、色だけに頼りません。</p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

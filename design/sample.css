@@ -1,0 +1,223 @@
+/* 見本用（社長の確認用）。本番の public/app.css にはまだ入れない。値は docs/DESIGN.md に合わせる */
+:root {
+  --bg: #EEF3F8;
+  --surface: #FFFFFF;
+  --ink: #1E2226;
+  --ink-sub: #5A6068;
+  --line: #D5DCE4;
+  --action: #1F4E79;
+  --ok: #23704A; --ok-bg: #E6F3EC;
+  --warn: #8A5A00; --warn-bg: #FFF3D4;
+  --danger: #A8261B; --danger-bg: #FCEAE7;
+  --glow: #F2B33D; --glow-bg: #FFF6E2;
+  --chart-1: #1F4E79; --chart-2: #6FA8DC; --chart-3: #B4BFCB;
+  --r: 10px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: #FFFFFF;
+  color: var(--ink);
+  font-family: "BIZ UDPGothic", sans-serif;
+  font-size: 18px;
+  line-height: 1.8;
+  font-variant-numeric: tabular-nums;
+}
+p, h1, h2, h3, ul, ol, dl, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+
+/* ---------- 見本の台紙（社長向けの説明。アプリの一部ではない） ---------- */
+.sheet { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+.sheet-head h1 { font-size: 26px; line-height: 1.5; }
+.sheet-head p { font-size: 16px; color: var(--ink-sub); margin-top: var(--s2); }
+.rules {
+  margin-top: var(--s5);
+  background: var(--surface);
+  border-radius: var(--r);
+  padding: var(--s5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s4) var(--s5);
+}
+.rules h2 { grid-column: 1 / -1; font-size: 20px; }
+.rule b { display: block; font-size: 17px; }
+.rule span { display: block; font-size: 15px; color: var(--ink-sub); line-height: 1.7; }
+.phones {
+  margin-top: 32px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  justify-content: center;
+  align-items: flex-start;
+}
+.mock { width: 375px; max-width: 100%; }
+.mock-label { font-size: 17px; font-weight: 700; }
+.mock-note { font-size: 15px; color: var(--ink-sub); line-height: 1.7; margin: var(--s1) 0 var(--s3); min-height: 78px; }
+.phone {
+  background: var(--bg);
+  border: 1px solid #C9C5BC;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(30, 34, 38, .10);
+}
+
+/* ---------- ここからアプリの見本 ---------- */
+.top { background: var(--surface); padding: var(--s4) var(--s4) var(--s3); border-bottom: 1px solid var(--line); }
+.brand { font-size: 15px; color: var(--ink-sub); }
+.inn { font-size: 22px; line-height: 1.4; }
+.today { font-size: 16px; color: var(--ink-sub); }
+
+/* チームの帯：押せないので札やボタンの形にしない。働いている担当だけ上の線が光る */
+.team { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s3); margin-top: var(--s3); }
+.team li { font-size: 15px; color: var(--ink-sub); padding-top: 6px; border-top: 4px solid var(--line); }
+.team li.on { color: var(--ink); font-weight: 700; border-top-color: var(--glow); }
+.team-now {
+  margin-top: var(--s2);
+  font-size: 16px;
+  background: var(--glow-bg);
+  border-left: 4px solid var(--glow);
+  padding: var(--s1) var(--s3);
+  border-radius: 0 var(--r) var(--r) 0;
+}
+
+.body { padding: var(--s4); }
+.h2 { font-size: 22px; line-height: 1.5; margin-bottom: var(--s3); }
+
+/* ホームの一覧（WESTER 風の1列の大きな行） */
+.menu { background: var(--surface); border-radius: var(--r); border: 1px solid var(--line); }
+.menu li + li { border-top: 1px solid var(--line); }
+.row {
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: 76px; padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  color: inherit; text-decoration: none;
+}
+.ico {
+  flex: 0 0 44px; height: 44px; border-radius: var(--r);
+  background: #E8EEF4; color: var(--action);
+  display: grid; place-items: center;
+}
+.ico svg { width: 26px; height: 26px; }
+.row-text { flex: 1; min-width: 0; }
+.row-name { display: block; font-size: 18px; font-weight: 700; line-height: 1.5; }
+.row-fact { display: block; font-size: 16px; color: var(--ink-sub); line-height: 1.6; }
+.row-fact b { color: var(--ink); font-size: 17px; }
+.chev { flex: 0 0 auto; font-size: 26px; color: var(--ink-sub); line-height: 1; }
+.mini-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: #E3E9EF; margin-top: 6px; }
+.mini-bar i { display: block; }
+.mini-bar .used { background: var(--action); }
+.mini-bar .booked { background: var(--chart-2); }
+
+/* 戻る・月の切り替え */
+.back {
+  display: flex; align-items: center; gap: var(--s2);
+  min-height: 56px; padding: 0 var(--s4);
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  font-size: 18px; font-weight: 700; color: var(--action);
+}
+.months { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s4); }
+.months .now { flex: 1; text-align: center; font-size: 20px; font-weight: 700; }
+.btn {
+  min-height: 56px; padding: 0 var(--s4);
+  border-radius: var(--r); border: 2px solid var(--action);
+  background: var(--surface); color: var(--action);
+  font: inherit; font-size: 18px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.btn.wide { width: 100%; }
+
+/* カードと数字 */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); }
+.card + .card { margin-top: var(--s3); }
+.card-title { font-size: 18px; font-weight: 700; margin-bottom: var(--s2); }
+.hero-label { font-size: 16px; color: var(--ink-sub); }
+.hero { font-size: 40px; font-weight: 700; line-height: 1.3; letter-spacing: .01em; }
+.unit { font-size: .5em; margin-left: 2px; }
+.tag-est {
+  display: inline-block; font-size: 15px; font-weight: 700; line-height: 1.6;
+  color: var(--warn); background: var(--warn-bg);
+  padding: 0 var(--s2); border-radius: 999px; vertical-align: middle;
+}
+.sub { font-size: 16px; color: var(--ink-sub); line-height: 1.7; }
+
+/* レシートのような明細 */
+.receipt { margin-top: var(--s3); }
+.receipt div { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; }
+.receipt dt { font-size: 17px; }
+.receipt dd { font-size: 20px; font-weight: 700; }
+.receipt .minus dd { color: var(--danger); }
+.receipt .total { border-top: 2px solid var(--ink); margin-top: var(--s1); padding-top: var(--s2); }
+.receipt .total dt { font-weight: 700; }
+.receipt .total dd { font-size: 24px; }
+
+/* ドーナツと表 */
+.donut-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--s3); }
+.donut { width: 150px; height: 150px; }
+.legend { width: 100%; }
+.legend li { display: grid; grid-template-columns: 14px 1fr auto; column-gap: var(--s2); align-items: baseline; padding: 6px 0; }
+.legend li + li { border-top: 1px solid var(--line); }
+.sw { width: 14px; height: 14px; border-radius: 3px; align-self: center; }
+.sw.c1 { background: var(--chart-1); }
+.sw.c2 { background: var(--chart-2); }
+.sw.c3 { background: var(--chart-3); }
+.lg-name { font-size: 17px; font-weight: 700; line-height: 1.4; }
+.lg-pct { font-size: 17px; font-weight: 700; text-align: right; }
+.lg-amt { grid-column: 2 / 4; font-size: 16px; color: var(--ink-sub); line-height: 1.5; display: flex; justify-content: space-between; }
+
+/* 2つに分けた横棒 */
+.split { display: flex; height: 22px; border-radius: 6px; overflow: hidden; margin: var(--s2) 0 var(--s3); }
+.split .a { background: var(--chart-1); }
+.split .b { background: var(--chart-3); }
+.split-legend li { display: grid; grid-template-columns: 14px 1fr auto; column-gap: var(--s2); align-items: center; padding: 2px 0; font-size: 17px; }
+.split-legend b { font-size: 20px; }
+
+/* 小さな数字の行 */
+.facts div { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; gap: var(--s3); }
+.facts div + div { border-top: 1px solid var(--line); }
+.facts dt { font-size: 17px; }
+.facts dt small { display: block; font-size: 15px; color: var(--ink-sub); }
+.facts dd { font-size: 28px; font-weight: 700; white-space: nowrap; }
+.facts dd.up { font-size: 22px; color: var(--ok); }
+
+/* 画面の下の3行 */
+.notes { padding: var(--s3) var(--s4) var(--s5); }
+.notes li { font-size: 15px; color: var(--ink-sub); line-height: 1.7; padding-left: 1em; text-indent: -1em; }
+.notes li::before { content: "・"; }
+
+/* ゲストのホーム（Grab 風の大きなしるしのタイル） */
+.g-top { background: var(--surface); padding: var(--s4); border-bottom: 1px solid var(--line); }
+.lang { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); margin-top: var(--s3); }
+.lang span { font-size: 17px; min-height: 56px; display: flex; align-items: center; justify-content: center; padding: 0 var(--s3); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.lang span.on { border: 2px solid var(--action); font-weight: 700; color: var(--action); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  min-height: 116px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s2);
+  font-size: 16px; font-weight: 700; text-align: center; line-height: 1.4; padding: var(--s2);
+}
+.tile .big { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: #E8EEF4; color: var(--action); }
+.tile .big svg { width: 30px; height: 30px; }
+.tile.sos .big { background: var(--danger-bg); color: var(--danger); }
+.ask {
+  margin-top: var(--s4); background: var(--action); color: #fff; border-radius: var(--r);
+  min-height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 var(--s4);
+  font-size: 18px; font-weight: 700;
+}
+.g-note { margin-top: var(--s3); font-size: 15px; color: var(--ink-sub); line-height: 1.7; }
+.facts dd .unit { font-size: 16px; }
+
+/* 背景の色 3案（見本だけ。決まったら :root の --bg と --line に入れる） */
+.bgs { margin-top: 40px; }
+.bgs-title { font-size: 20px; font-weight: 700; }
+.bgs-lead { font-size: 16px; color: var(--ink-sub); margin-top: var(--s1); }
+.bgs .phones { margin-top: var(--s4); }
+.phone.bg-a { --bg: #FFFFFF; --line: #DCDFE3; }
+.phone.bg-b { --bg: #EEF3F8; --line: #D5DCE4; }
+.phone.bg-c { --bg: #FAF7F0; --line: #E2DCCF; }
+.pick { display: inline-block; font-size: 15px; font-weight: 700; line-height: 1.6; color: var(--ok); background: var(--ok-bg); padding: 0 var(--s2); border-radius: 999px; margin-left: var(--s2); vertical-align: middle; }
+.hero-card .split { margin-top: var(--s3); }
+.vs { font-size: 17px; margin-top: var(--s1); }
+.vs b { color: var(--ok); font-size: 20px; }
+.keep-total dd { font-size: 28px; }
+.keep-total dd .unit { font-size: 16px; }
+.rules { border: 1px solid var(--line); }
