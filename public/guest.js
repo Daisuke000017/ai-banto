@@ -722,7 +722,14 @@ function drawMap(data, b) {
   svgText(m, 72, 126, S.aoshima, "map-label map-strong", "end");
   svgText(m, 106, 227, S.udo, "map-label");
   svgText(m, 106, 285, S.obi, "map-label");
-  svgText(m, 316, 194, S.sunqmar, "map-label", "end");
+  // 訳のない停留所は「日本語名 (英語名)」で長いので、2行に分けて線や本数に重ならないようにする
+  const cut = S.sunqmar.indexOf(" (");
+  if (cut > 0) {
+    svgText(m, 316, 194, S.sunqmar.slice(0, cut), "map-label", "end");
+    svgText(m, 316, 210, S.sunqmar.slice(cut + 1), "map-label map-walk-label map-sub", "end");
+  } else {
+    svgText(m, 316, 194, S.sunqmar, "map-label", "end");
+  }
 
   svgText(m, 76, 78, b.count(seg.north), "map-label map-count", "end");
   svgText(m, 76, 180, b.count(seg.south_n), "map-label map-count", "end");

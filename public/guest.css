@@ -226,6 +226,7 @@ select.bad { border-color: var(--danger); }
 .map-strong { font-weight: 700; font-size: 18px; }
 .map-count { fill: var(--action); font-weight: 700; }
 .map-walk-label { fill: var(--ink-sub); }
+.map-sub { font-size: 13px; }
 
 .ride { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; counter-reset: ride; }
 .ride li { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; counter-increment: ride; }
