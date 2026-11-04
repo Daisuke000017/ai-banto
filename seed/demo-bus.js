@@ -15,7 +15,13 @@ export const timetable = {
   timetable_date: "2026-10-01",
   url: "https://www.miyakoh.co.jp/rosen/0_jikoku/2-09_20261001.pdf",
   contact: "お客様バス案内センター 0570-039-385",
+  contact_tel: "0570039385",
+  // 「宮交バスどこドコ？？」（バスがいまどこにいるか）。宮崎交通のサイトのリンク先（2026-11-04 確認）
+  live_url: "https://www.miyakoh.co.jp/rosen/busdoko/",
 };
+
+// 宿（架空）から最寄りのバス停まで。歩く分数は架空の宿の値。道順の写真はオーナーが入れる（デモでは無し）
+export const innAccess = { stop_id: "aoshima", walk_minutes: 8 };
 
 export const busRoutes = [
   { id: "aoshima", name: "青島方面（宮崎駅〜青島・白浜）", operator: "宮崎交通" },

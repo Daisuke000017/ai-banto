@@ -100,7 +100,41 @@
         <div class="card"><p class="guide" id="pn-text"></p></div>
       </div>
       <div id="pn-bus" class="panel" hidden>
-        <div class="card"><p id="pn-bus-text"></p></div>
+        <!-- いつも出す1：デモ用の注意書き -->
+        <p class="msg msg-warn" id="bus-demo"></p>
+        <p class="src" id="bus-state" aria-live="polite"></p>
+        <div id="bus-body" hidden>
+          <div class="card bus-stop">
+            <svg class="walk" viewBox="0 0 120 48" aria-hidden="true">
+              <path class="walk-path" d="M18 30 C 44 30, 52 14, 78 18 S 96 30, 104 26"/>
+              <path class="walk-house" d="M6 34V24l10-8 10 8v10z"/>
+              <rect class="walk-pole" x="102" y="10" width="4" height="28" rx="1"/>
+              <circle class="walk-sign" cx="104" cy="12" r="7"/>
+            </svg>
+            <p class="bus-label" id="bus-stop-label"></p>
+            <p class="bus-stop-name" id="bus-stop-name"></p>
+            <p class="bus-walk" id="bus-walk"></p>
+          </div>
+          <p class="bus-today" id="bus-today"></p>
+          <div class="bus-dirs" id="bus-dirs"></div>
+          <div class="card">
+            <h2 class="sub-title" id="bus-map-title"></h2>
+            <svg class="bus-map" id="bus-map" viewBox="-12 0 332 300" role="img"></svg>
+            <p class="src" id="bus-map-note"></p>
+          </div>
+          <div class="card">
+            <h2 class="sub-title" id="bus-ride-title"></h2>
+            <ol class="ride" id="bus-ride"></ol>
+          </div>
+          <details class="card bus-all">
+            <summary id="bus-all-title"></summary>
+            <div id="bus-all"></div>
+          </details>
+        </div>
+        <!-- いつも出す2：バス案内センター／いつも出す3：どこドコ -->
+        <a class="call call-info" id="bus-tel" href="tel:0570039385"><span class="num-s">0570-039-385</span><span id="bus-tel-label"></span></a>
+        <a class="btn" id="bus-live" href="https://www.miyakoh.co.jp/rosen/busdoko/" target="_blank" rel="noopener noreferrer"></a>
+        <p class="src"><a id="bus-src" href="https://www.miyakoh.co.jp/rosen/0_jikoku/2-09_20261001.pdf" target="_blank" rel="noopener noreferrer"></a></p>
       </div>
       <div id="pn-sos" class="panel" hidden>
         <a class="call" href="tel:119"><span class="num">119</span><span id="sos-119"></span></a>

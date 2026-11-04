@@ -10,6 +10,8 @@
   --ok-bg: #E6F3EC;
   --danger: #A8261B;
   --danger-bg: #FCEAE7;
+  --warn: #8A5A00;
+  --warn-bg: #FFF3D4;
   --r: 10px;
   --font: "Noto Sans JP", "Yu Gothic", sans-serif;
 }
@@ -61,6 +63,7 @@ body {
   text-align: center;
 }
 .btn-main { background: var(--action); color: #fff; }
+a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .btn:disabled { opacity: .6; cursor: default; }
 .back { border-color: var(--line); color: var(--ink); text-align: left; }
 .btn:focus-visible, .back:focus-visible, .tile:focus-visible, .lang:focus-visible, select:focus-visible, .call:focus-visible {
@@ -178,5 +181,59 @@ select.bad { border-color: var(--danger); }
   text-decoration: none;
 }
 .call .num { font-size: 40px; font-variant-numeric: tabular-nums; line-height: 1; }
+.msg-warn { background: var(--warn-bg); color: var(--warn); font-weight: 700; }
+
+/* バスのタブ（M13） */
+.call-info { border-color: var(--action); background: var(--surface); color: var(--action); flex-wrap: wrap; gap: 4px 16px; }
+.call .num-s { font-size: 24px; font-variant-numeric: tabular-nums; }
+.bus-stop { display: grid; grid-template-columns: 120px 1fr; column-gap: 12px; align-items: center; }
+.bus-stop .walk { grid-row: 1 / 4; width: 120px; height: 48px; }
+.walk-path { fill: none; stroke: var(--action); stroke-width: 3; stroke-dasharray: 4 5; stroke-linecap: round; }
+.walk-house { fill: var(--surface); stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.walk-pole { fill: var(--ink-sub); }
+.walk-sign { fill: var(--action); }
+.bus-stop p { margin: 0; }
+.bus-label { margin: 0; font-size: 16px; color: var(--ink-sub); }
+.bus-stop-name { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.bus-walk { font-weight: 700; color: var(--action); }
+.bus-today { margin: 0; font-size: 16px; color: var(--ink-sub); font-variant-numeric: tabular-nums; }
+.bus-dirs { display: flex; flex-direction: column; gap: 12px; }
+.bus-dir { display: flex; flex-direction: column; gap: 8px; }
+.bus-dir .sub-title { margin: 0; }
+.bus-next p, .bus-last p { margin: 0; }
+.bus-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.bus-time { font-size: 40px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.bus-last .bus-time { font-size: 28px; }
+.bus-in { font-weight: 700; color: var(--action); }
+.bus-arrive, .bus-note { font-size: 16px; color: var(--ink-sub); }
+.bus-after { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.bus-time-s { font-weight: 700; font-variant-numeric: tabular-nums; }
+.bus-after-to { color: var(--ink-sub); }
+.bus-none { margin: 0; font-weight: 700; }
+.bus-last { padding: 10px 12px; border-left: 4px solid var(--warn); border-radius: 0 var(--r) var(--r) 0; background: var(--warn-bg); }
+.bus-last .bus-label, .bus-last .bus-in { color: var(--warn); font-weight: 700; }
+.bus-last.passed { border-left-color: var(--line); background: var(--bg); }
+.bus-last.passed .bus-time, .bus-last.passed .bus-label, .bus-last.passed .bus-in { color: var(--ink-sub); }
+
+.bus-map { display: block; width: 100%; height: auto; max-width: 420px; margin: 0 auto; }
+.map-line { fill: none; stroke: var(--action); stroke-linecap: round; stroke-linejoin: round; }
+.map-walk { fill: none; stroke: var(--ink-sub); stroke-width: 3; stroke-dasharray: 5 6; stroke-linecap: round; }
+.map-inn { fill: var(--warn-bg); stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.map-stop { fill: var(--surface); stroke: var(--ink); stroke-width: 3; }
+.map-here { stroke: var(--action); stroke-width: 4; }
+.map-label { font-size: 16px; fill: var(--ink); font-family: var(--font); }
+.map-strong { font-weight: 700; font-size: 18px; }
+.map-count { fill: var(--action); font-weight: 700; }
+.map-walk-label { fill: var(--ink-sub); }
+
+.ride { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; counter-reset: ride; }
+.ride li { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; counter-increment: ride; }
+.ride li span::before { content: counter(ride) ". "; font-weight: 700; }
+.ride-ico { width: 48px; height: 48px; fill: none; stroke: var(--action); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+.bus-all summary { cursor: pointer; font-weight: 700; color: var(--action); min-height: 32px; }
+.bus-all-head { margin: 12px 0 4px; font-size: 16px; color: var(--ink-sub); }
+.bus-all-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.bus-all-list .passed { color: var(--ink-sub); text-decoration: line-through; }
 
 .foot { margin: 24px 0 0; font-size: 15px; color: var(--ink-sub); text-align: center; }

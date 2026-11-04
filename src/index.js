@@ -15,6 +15,7 @@
 // - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる。前のURLは止める）
 // ゲスト画面（M12・宿のURL）。URLが使えない理由は、どれでも同じ「使えません」だけを返す
 // - GET  /g/:token                        ゲストの画面（public/guest.html）
+// - GET  /api/g/:token/bus?lang=&time=    バス（M13）：最寄りのバス停の次のバス・今日の最終・1日の本数（time はデモのときだけ）
 // - POST /api/g/:token/language           言語を覚える {language}
 // - POST /api/g/:token/profile            人数・国籍を入れる {language, adults, children, infants, nationalities}
 //                                         （台帳は書きかえない。違えば「ずれ」に入れ、オーナーがOKしたときだけ台帳に入る）
@@ -38,6 +39,7 @@
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
+import { busBoard, parseClock } from "./lib/bus.js";
 import { kpiView } from "./lib/kpis.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
@@ -436,6 +438,19 @@ async function handleGuestPost(request, url, env, token, action) {
   return json({ saved: true, profile: await loadGuestProfile(env, r.id) }, 200, GUEST_HEADERS);
 }
 
+// ゲスト画面：バス（M13）。時刻はプログラムが時刻表から出す（AIは使わない）
+async function handleGuestBus(url, env, today, token) {
+  const found = await loadGuestLink(env, token);
+  if (!found) return guestGone();
+  const { link, r } = found;
+  const lang = normLang(url.searchParams.get("lang") ?? link.language ?? r.language);
+  // 「いま」は日本時間の時計。デモのときだけ ?time=HH:MM で時刻を変えて見せられる
+  const clock = new Date(Date.now() + 9 * 3600 * 1000);
+  let minutes = clock.getUTCHours() * 60 + clock.getUTCMinutes();
+  if (env.DEMO_TODAY) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
+  return json(busBoard({ date: today, minutes, lang }), 200, GUEST_HEADERS);
+}
+
 // 予約メール（M17）：読む
 async function handleBookingEmailGet(url, env) {
   if (url.pathname === "/api/booking-emails/samples") {
@@ -569,10 +584,11 @@ export default {
         if (request.method !== "GET") return json({ error: "この操作は受け付けていません" }, 405);
         return await serveAsset(request, env, "/guest");
       }
-      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|language|profile)$/);
+      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|bus|language|profile)$/);
       if (g) {
-        if (g[2] === "home") {
+        if (g[2] === "home" || g[2] === "bus") {
           if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
+          if (g[2] === "bus") return await handleGuestBus(url, env, today, g[1]);
           return await handleGuest(url, env, today, g[1]);
         }
         if (request.method !== "POST") return json({ error: "この操作は受け付けていません" }, 405);
