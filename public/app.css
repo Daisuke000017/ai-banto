@@ -122,7 +122,12 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .sb-note + .run-reason { margin-top: var(--s2); }
 
 /* チームの成績 */
-.eval-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s4); margin-bottom: var(--s4); }
+/* カード3枚は「縦1列」か「横3列」のどちらか。2列にすると3枚目だけ下に落ちて右が空くので使わない。
+   横3列はカードの中の「人の確認へ」が1行に収まる幅（900px〜）から */
+.eval-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s4); margin-bottom: var(--s4); }
+@media (min-width: 900px) {
+  .eval-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .eval-grid .card { margin: 0; }
 .eval-card.is-main { border-top: 4px solid var(--glow); }
 .eval-headline { margin-top: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r); border-left: 4px solid var(--glow); background: var(--glow-bg); }
