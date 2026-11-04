@@ -22,14 +22,16 @@
       <p class="drill-label">訓練中</p>
       <p>公式の警報・避難指示の代わりではありません。ゲストの画面は、いま災害モード（訓練）です</p>
     </div>
-    <ul class="team" id="team" aria-label="チーム">
-      <li data-role="banto">番頭</li>
-      <li data-role="keiri">経理担当</li>
-      <li data-role="kansa">監査役</li>
-      <li data-role="shukuhaku">宿泊担当</li>
-      <li data-role="kikaku">経営企画</li>
+    <ul class="team" id="team" aria-label="チーム（押すと最近の仕事が見られます）">
+      <li data-role="banto"><button type="button" class="chip" aria-expanded="false" aria-controls="team-log"><span class="chip-name">番頭</span></button></li>
+      <li data-role="keiri"><button type="button" class="chip" aria-expanded="false" aria-controls="team-log"><span class="chip-name">経理担当</span></button></li>
+      <li data-role="kansa"><button type="button" class="chip" aria-expanded="false" aria-controls="team-log"><span class="chip-name">監査役</span></button></li>
+      <li data-role="shukuhaku"><button type="button" class="chip" aria-expanded="false" aria-controls="team-log"><span class="chip-name">宿泊担当</span></button></li>
+      <li data-role="keiei"><button type="button" class="chip" aria-expanded="false" aria-controls="team-log"><span class="chip-name">経営企画</span></button></li>
     </ul>
     <p class="team-note" id="team-note" aria-live="polite">数字はプログラムが数え、文はチームが下書きします。</p>
+    <p class="team-arrow" id="team-arrow" role="status" hidden></p>
+    <div class="team-log" id="team-log" hidden></div>
   </header>
 
   <main>
@@ -70,6 +72,11 @@
           <span class="row-text"><span class="row-name">お金の照合</span><span class="row-fact">明細と予約を照らし合わせる</span></span>
           <span class="chev" aria-hidden="true">›</span>
         </a></li>
+        <li><a class="row" href="#eval">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span>
+          <span class="row-text"><span class="row-name">チームの成績</span><span class="row-fact">自作の例題40件で確かめた結果</span></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </a></li>
       </ul>
     </section>
 
@@ -79,6 +86,7 @@
     <section id="panel-guest" class="panel" aria-label="ゲスト連絡" hidden></section>
     <section id="panel-mail" class="panel" aria-label="予約メール" hidden></section>
     <section id="panel-money" class="panel" aria-label="お金の照合" hidden></section>
+    <section id="panel-eval" class="panel" aria-label="チームの成績" hidden></section>
   </main>
 
   <footer class="notes">

@@ -106,13 +106,142 @@ function toast(text) {
   toastTimer = setTimeout(() => (t.hidden = true), 4000);
 }
 
-// チームの名札：働いている担当を光らせ、「いま働いています」を言葉でも出す（色だけで伝えない）
+// ---- チーム（O-3）----
+// 名札：働いている担当を光らせ、「いま働いています」を言葉でも出す（色だけで伝えない）。
+// AI が動いている間は、仕事の記録（agent_runs）を1秒ごとに読み、本当に働いている担当を光らせる。
+// 監査役の差し戻しは「監査役 → 担当」の矢印と、名札の回数で見せる。名札を押すと最近の仕事が見られる
+const crew = { since: null, seen: new Set(), counts: {}, data: null, open: null, poll: null, stopAt: 0, stepRoles: [], stepNote: null };
+const TEAM_NAME = { banto: "番頭", keiri: "経理担当", kansa: "監査役", shukuhaku: "宿泊担当", keiei: "経営企画" };
+const RUN_STATUS = { working: ["働き中", "warn"], done: ["できた", "ok"], sent_back: ["差し戻された", "danger"], failed: ["失敗", "danger"] };
+const QUIET_NOTE = "数字はプログラムが数え、文はチームが下書きします。";
+
 function team(roles, note) {
-  for (const li of $("team").children) li.classList.toggle("working", roles.includes(li.dataset.role));
+  crew.stepRoles = roles;
+  crew.stepNote = note;
+  paintTeam();
+}
+
+// 記録で働き中の担当がいればそちらを、いなければ画面の段取り（steps）の担当を光らせる
+function paintTeam() {
+  const real = crew.poll ? (crew.data?.agents ?? []).filter((a) => a.working) : [];
+  const roles = real.length ? real.map((a) => a.agent) : crew.stepRoles;
+  for (const li of $("team").children) {
+    li.classList.toggle("working", roles.includes(li.dataset.role));
+    const n = crew.counts[li.dataset.role] ?? 0;
+    const b = li.querySelector(".chip");
+    let badge = b.querySelector(".chip-badge");
+    if (n && !badge) b.append((badge = el("span", { cls: "chip-badge" })));
+    if (badge) badge.textContent = `↩${n}`;
+    b.setAttribute("aria-label", `${TEAM_NAME[li.dataset.role]}${n ? `（差し戻し${n}回）` : ""}${roles.includes(li.dataset.role) ? "（働き中）" : ""}`);
+  }
   const n = $("team-note");
   const working = roles.length > 0;
   n.classList.toggle("is-working", working);
-  n.textContent = working ? `いま働いています：${note}` : (note ?? "数字はプログラムが数え、文はチームが下書きします。");
+  let text = crew.stepNote ?? QUIET_NOTE;
+  if (real.length && !real.some((a) => crew.stepRoles.includes(a.agent))) {
+    text = real.map((a) => `${a.name}が「${a.recent.find((r) => r.status === "working")?.task ?? "仕事"}」に取りかかっています`).join("／");
+  }
+  n.textContent = working ? `いま働いています：${text}` : text;
+}
+
+async function pullTeam() {
+  try {
+    const d = await api(`/api/team/runs?since=${crew.since ?? 0}`);
+    if (crew.since == null) {
+      // 開いたときより前の差し戻しは、矢印にしない（回数は履歴の中で見られる）
+      crew.since = d.latest_id;
+      d.new_sent_back = [];
+    }
+    crew.data = d;
+    for (const s of d.new_sent_back) {
+      if (crew.seen.has(s.id)) continue;
+      crew.seen.add(s.id);
+      crew.counts[s.agent] = (crew.counts[s.agent] ?? 0) + 1;
+      showArrow(s);
+    }
+    paintTeam();
+    if (crew.open) renderTeamLog();
+  } catch {
+    // 読めなくても画面の段取りで光らせ続ける（記録が読めないだけで仕事は止めない）
+  }
+}
+
+function showArrow(s) {
+  const a = $("team-arrow");
+  a.replaceChildren(
+    el("span", { cls: "arrow-who", text: "監査役" }),
+    el("span", { cls: "arrow-mark", text: "→", attrs: { "aria-label": "から" } }),
+    el("span", { cls: "arrow-who", text: TEAM_NAME[s.agent] ?? s.agent }),
+    el("span", { text: `　差し戻し（${s.task}）${s.reason ? `：${s.reason}` : ""}` }),
+  );
+  a.hidden = false;
+}
+
+// AI が動く間だけ1秒ごとに読む。終わってから3秒は読み続ける（最後の「できた」を拾うため）
+function watchTeam(on) {
+  if (on) {
+    crew.stopAt = 0;
+    $("team-arrow").hidden = true;
+    if (!crew.poll) crew.poll = setInterval(() => {
+      if (crew.stopAt && Date.now() > crew.stopAt) {
+        clearInterval(crew.poll);
+        crew.poll = null;
+      }
+      pullTeam();
+    }, 1000);
+    pullTeam();
+  } else {
+    crew.stopAt = Date.now() + 3000;
+  }
+}
+
+function toggleTeamLog(role) {
+  crew.open = crew.open === role ? null : role;
+  for (const li of $("team").children) li.querySelector(".chip").setAttribute("aria-expanded", String(li.dataset.role === crew.open));
+  $("team-log").hidden = !crew.open;
+  if (crew.open) {
+    renderTeamLog();
+    pullTeam();
+  }
+}
+
+// 記録の時刻は世界標準時。日本の時刻（+9時間）にして出す
+function jpTime(utc) {
+  const t = new Date(`${utc.replace(" ", "T")}Z`);
+  if (Number.isNaN(t.getTime())) return "";
+  const j = new Date(t.getTime() + 9 * 3600 * 1000);
+  return `${j.getUTCMonth() + 1}/${j.getUTCDate()} ${String(j.getUTCHours()).padStart(2, "0")}:${String(j.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function renderTeamLog() {
+  const box = $("team-log");
+  const a = crew.data?.agents.find((x) => x.agent === crew.open);
+  const name = TEAM_NAME[crew.open];
+  const close = btn("閉じる", () => toggleTeamLog(crew.open), "btn small");
+  if (!a) {
+    box.replaceChildren(el("div", { cls: "team-log-head" }, [el("h2", { cls: "card-title", text: `${name}の最近の仕事` }), close]), loading("記録を読んでいます"));
+    return;
+  }
+  const list = a.recent.length
+    ? el(
+        "ol",
+        { cls: "run-list" },
+        a.recent.map((r) => {
+          const [label, tone] = RUN_STATUS[r.status] ?? [r.status, ""];
+          return el("li", {}, [
+            el("span", { cls: "run-time", text: jpTime(r.created_at) }),
+            el("span", { cls: "run-task", text: r.task }),
+            el("span", { cls: `pill ${tone}`, text: label }),
+            r.sent_back_reason ? el("p", { cls: "run-reason", text: `理由：${r.sent_back_reason}` }) : null,
+          ]);
+        }),
+      )
+    : el("p", { cls: "state", text: a.agent === "keiei" ? "経営企画は、まだ仕事をしていません（月のふりかえりで働く予定です）" : "まだ仕事の記録がありません" });
+  box.replaceChildren(
+    el("div", { cls: "team-log-head" }, [el("h2", { cls: "card-title", text: `${name}の最近の仕事` }), close]),
+    list,
+    el("p", { cls: "sub", text: `${a.agent === "kansa" ? "" : `監査役に差し戻された回数：${a.sent_back_count}回。`}記録には、何の仕事かと結果だけを出します（宿泊者の名前や文の中身は出しません）` }),
+  );
 }
 
 // SVG の部品（図の幅や色は属性とクラスで決める。インラインの style は使わない）
@@ -646,6 +775,7 @@ function teamWorking(onStep, steps = DRAFT_STEPS) {
     onStep?.(steps[i][1]);
   };
   show();
+  watchTeam(true);
   teamTimer = setInterval(() => {
     i = Math.min(i + 1, steps.length - 1);
     show();
@@ -653,6 +783,7 @@ function teamWorking(onStep, steps = DRAFT_STEPS) {
 }
 function teamDone(note) {
   clearInterval(teamTimer);
+  watchTeam(false);
   team([], note);
 }
 
@@ -1666,11 +1797,93 @@ async function toggleDrill() {
   }
 }
 
+// ---- チームの成績（O-4-6）：見るだけ。流すのは手元のスクリプトで、社長の OK のあと ----
+
+async function showEval() {
+  const p = $("panel-eval");
+  p.replaceChildren(loading("成績を読んでいます"));
+  try {
+    const d = await api("/api/eval/results");
+    const head = el("article", { cls: "card" }, [
+      el("h2", { text: "チームの成績" }),
+      el("p", { cls: "lead", text: `${d.label}です。例題はすべて架空で、本番の予約やお客さまのデータは使っていません` }),
+    ]);
+    if (d.empty) {
+      head.append(
+        el("p", { cls: "notice info", text: `${d.message}。例題は${d.case_count || 40}件用意してあります。流すとAIの料金がかかるので、まとめて1回だけ流し、結果をここに出します` }),
+      );
+      p.replaceChildren(head);
+      return;
+    }
+    head.append(el("p", { cls: "sub", text: `流した日：${jpTime(d.run_at)}（3つのやり方 × 例題${d.case_count}件）` }));
+    p.replaceChildren(head, evalTotals(d), evalTable(d), evalExamples(d));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showEval));
+  }
+}
+
+const rate = (a, n) => (n ? Math.round((a / n) * 100) : 0);
+
+// やり方ごとの合計：正解・止められずに出た間違い・人の確認に回した・余計な差し戻し
+function evalTotals(d) {
+  return el(
+    "div",
+    { cls: "eval-grid" },
+    d.totals.map((t) =>
+      el("article", { cls: `card eval-card${t.variant === "full" ? " is-main" : ""}` }, [
+        el("h3", { cls: "card-title", text: t.label }),
+        el("dl", { cls: "nums" }, [
+          num("正解", `${t.correct}/${t.n}`, "件", "", `${rate(t.correct, t.n)}%`),
+          num("止められずに出た間違い", t.missed, "件", t.missed ? "is-danger" : "is-ok"),
+          num("人の確認に回した", t.flagged, "件", t.flagged ? "is-warn" : ""),
+          num("余計な差し戻し", t.false_alarm, "回"),
+        ]),
+      ]),
+    ),
+  );
+}
+
+// 分野 × やり方の表（正解の数）
+function evalTable(d) {
+  const head = el("tr", {}, [el("th", { text: "分野" }), ...d.variants.map((v) => el("th", { cls: "n", text: v.label }))]);
+  const rows = d.domains.map((dm) =>
+    el("tr", {}, [
+      el("th", { attrs: { scope: "row" }, text: dm.label }),
+      ...dm.variants.map((c) =>
+        el("td", { cls: "n" }, [`${c.correct}/${c.n}`, c.missed ? el("span", { cls: "cell-sub danger", text: `止められず${c.missed}` }) : null]),
+      ),
+    ]),
+  );
+  return el("article", { cls: "card" }, [
+    el("h3", { cls: "card-title", text: "分野ごとの正解" }),
+    el("p", { cls: "lead", text: "手引き（Skill）や監査役を外すと、どこで間違いが増えるかを比べます" }),
+    el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), el("tbody", {}, rows)])]),
+  ]);
+}
+
+// 監査役が差し戻した例（例題のメモと理由だけ）
+function evalExamples(d) {
+  const body = d.examples.length
+    ? el(
+        "ul",
+        { cls: "sb-list" },
+        d.examples.map((x) =>
+          el("li", {}, [
+            el("p", { cls: "sb-note", text: `${x.note}（${d.domains.find((m) => m.domain === x.domain)?.label ?? x.domain}）` }),
+            el("p", { cls: "run-reason", text: `監査役：${x.reason}` }),
+            el("span", { cls: `pill ${x.fixed ? "ok" : "warn"}`, text: x.fixed ? "直して正解" : "人の確認へ" }),
+          ]),
+        ),
+      )
+    : el("p", { cls: "state", text: "監査役の差し戻しはありませんでした" });
+  return el("article", { cls: "card" }, [el("h3", { cls: "card-title", text: "監査役が差し戻した例" }), body]);
+}
+
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney };
-const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合" };
+const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
+const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -1744,6 +1957,8 @@ async function start() {
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
   show(location.hash.slice(1));
   $("drill-btn").addEventListener("click", toggleDrill);
+  for (const li of $("team").children) li.querySelector(".chip").addEventListener("click", () => toggleTeamLog(li.dataset.role));
+  pullTeam();
   loadDrill();
 }
 

@@ -8,6 +8,8 @@
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
 // - /api/drill                          訓練（M15）の状態と、今回の訓練の避難の案内の下書き
+// - /api/eval/results                   成績（M9）：自作の例題40件を、手元のスクリプトで流した結果（画面からは流さない）
+// - /api/team/runs?since=               チーム（O-3）：係ごとの働きぶり・差し戻し（入力・出力の中身は返さない）
 // - それ以外の GET                       画面（public/）を返す
 // 書く（POST・JSONだけ・同じ画面からだけ）
 // - /api/drafts                         到着前案内をつくる {reservation_id}
@@ -73,6 +75,7 @@ import {
   OWNER_CHECK,
 } from "./lib/arrival.js";
 import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
+import { evalResults, teamRuns } from "./lib/eval.js";
 import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -237,6 +240,12 @@ async function handleGet(url, env, today) {
     });
   }
   if (p === "/api/drill") return json(await drillState(env, today));
+  if (p === "/api/eval/results") return json(await evalResults(env.DB));
+  if (p === "/api/team/runs") {
+    const since = url.searchParams.get("since") ?? "0";
+    if (!/^\d{1,12}$/.test(since)) throw new HttpError(400, "since は数字で指定してください");
+    return json(await teamRuns(env.DB, Number(since)));
+  }
   if (p === "/api/drafts") {
     const r = await loadReservation(env, url.searchParams.get("reservation_id"));
     const inn = await loadInn(env);
