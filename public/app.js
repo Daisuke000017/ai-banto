@@ -106,10 +106,24 @@ function toast(text) {
   toastTimer = setTimeout(() => (t.hidden = true), 4000);
 }
 
+// チームの名札：働いている担当を光らせ、「いま働いています」を言葉でも出す（色だけで伝えない）
 function team(roles, note) {
   for (const li of $("team").children) li.classList.toggle("working", roles.includes(li.dataset.role));
-  $("team-note").textContent = note ?? "数字はプログラムが数え、文はチームが下書きします。";
+  const n = $("team-note");
+  const working = roles.length > 0;
+  n.classList.toggle("is-working", working);
+  n.textContent = working ? `いま働いています：${note}` : (note ?? "数字はプログラムが数え、文はチームが下書きします。");
 }
+
+// SVG の部品（図の幅や色は属性とクラスで決める。インラインの style は使わない）
+const SVGNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs = {}, children = []) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null) e.setAttribute(k, String(v));
+  for (const c of [].concat(children)) if (c != null) e.append(c);
+  return e;
+}
+const shortMonth = (ym) => `${Number(ym.slice(5, 7))}月`;
 
 // CSV：数式として読まれないよう、= + - @ で始まる文字の前に ' を付ける
 function csvCell(v) {
@@ -140,98 +154,185 @@ function num(label, value, unit, cls = "", sub = "") {
 // 数えるのはプログラム（/api/kpis）。売上は「泊まった日」で数え、宿泊税は売上に入れない。
 
 const pct = (v) => `${Number(v).toFixed(1)}`;
-const diffYen = (a, b) => (a === b ? "同じ" : `${a > b ? "＋" : "−"}${yen(Math.abs(a - b))}円`);
 
 async function showKpi() {
   const p = $("panel-kpi");
-  p.replaceChildren(loading("プログラムが数えています"));
+  const head = [el("h2", { cls: "h2", text: "今月の数字" }), kpiMonths()];
+  p.replaceChildren(...head, loading("プログラムが数えています"));
   try {
     const d = await api(`/api/kpis?month=${encodeURIComponent(state.kpiMonth)}`);
     if (d.total === 0 && d.room_nights === 0) {
-      p.replaceChildren(kpiEmpty(d));
+      p.replaceChildren(...head, kpiEmpty(d));
       return;
     }
-    p.replaceChildren(kpiCard(d), kpiOtaCard(d), kpiCountryCard(d));
+    p.replaceChildren(...head, kpiHeroCard(d), kpiKeepCard(d), kpiOtaCard(d), kpiFactsCard(d), ...kpiLinks(d), kpiCountryCard(d));
   } catch (err) {
-    p.replaceChildren(errorBox(err, showKpi));
+    p.replaceChildren(...head, errorBox(err, showKpi));
   }
 }
 
-function kpiMonthPicker() {
+// 月の切り替え：これからの2か月（予約が入っている分）から、半年前まで
+function kpiMonths() {
   const now = state.today.slice(0, 7);
-  const sel = el("select", { attrs: { id: "kpi-month" } });
-  // これからの2か月（予約が入っている分）から、半年前まで
-  for (let i = 2; i >= -6; i--) {
-    const m = addMonths(now, i);
-    sel.append(el("option", { text: m === now ? `${jpMonth(m)}（今月）` : jpMonth(m), attrs: { value: m, selected: m === state.kpiMonth } }));
-  }
-  sel.addEventListener("change", () => {
-    state.kpiMonth = sel.value;
+  const cur = state.kpiMonth;
+  const prev = addMonths(cur, -1);
+  const next = addMonths(cur, 1);
+  const move = (m) => () => {
+    state.kpiMonth = m;
     showKpi();
-  });
-  return el("div", { cls: "pick" }, [el("label", { text: "月", attrs: { for: "kpi-month" } }), sel]);
-}
-
-function kpiHead(d, lead) {
-  return el("div", { cls: "card-head" }, [
-    el("div", {}, [el("h2", { text: `${jpMonth(d.month)}の数字` }), el("p", { cls: "lead", text: lead })]),
-    kpiMonthPicker(),
-  ]);
+  };
+  const back = btn(`◀ ${shortMonth(prev)}`, move(prev), "btn small");
+  back.disabled = prev < addMonths(now, -6);
+  back.setAttribute("aria-label", `前の月（${jpMonth(prev)}）を見る`);
+  const fwd = btn(`${shortMonth(next)} ▶`, move(next), "btn small");
+  fwd.disabled = next > addMonths(now, 2);
+  fwd.setAttribute("aria-label", `次の月（${jpMonth(next)}）を見る`);
+  const label = el("p", { cls: "now", attrs: { "aria-live": "polite" } }, [jpMonth(cur), cur === now ? el("small", { text: "今月" }) : null]);
+  return el("div", { cls: "months" }, [back, label, fwd]);
 }
 
 function kpiEmpty(d) {
   return el("article", { cls: "card" }, [
-    kpiHead(d, "泊まった日で数えています"),
-    el("p", { cls: "state", text: "この月に泊まる予約はまだありません" }),
-    el("div", { cls: "btns" }, [btn("予約メールを開く", () => selectTab("mail"))]),
+    el("p", { cls: "state", text: `${shortMonth(d.month)}に泊まる予約はまだありません` }),
+    el("div", { cls: "btns" }, [btn("予約メールを開く", () => go("mail"))]),
   ]);
 }
 
-function kpiCard(d) {
-  const ahead = d.sales_upcoming > 0;
-  const estimated = d.fee_estimate > 0;
-  const netLabel = ahead || estimated ? "手取り（見込み）" : "手取り";
-  const netSub = d.fee == null ? "手数料が分からない予約があります" : `売上 ${yen(d.total)}円 − 手数料 ${yen(d.fee)}円${estimated ? "（見込みを含む）" : ""}`;
+// 1枚目：売上（決まっている数字）。前の月との差は言葉で書く
+function kpiHeroCard(d) {
   const prev = d.previous;
-  const card = el("article", { cls: "card" }, [
-    kpiHead(d, "泊まった日で数えています。月をまたぐ予約は、泊まった夜の分だけこの月に入れます"),
-    el("dl", { cls: "nums kpi-nums" }, [
-      num(netLabel, d.net == null ? "—" : yen(d.net), d.net == null ? "" : "円", "kpi-main", netSub),
-      num("売上", yen(d.total), "円", "", `${jpMonth(prev.month)}より ${diffYen(d.total, prev.total)}`),
-      num("部屋が埋まった割合", pct(d.occupancy_pct), "%", "", `${d.rooms}部屋×${d.days}日のうち ${d.room_nights}泊分`),
-      num("1部屋1泊の平均", d.adr == null ? "—" : yen(d.adr), d.adr == null ? "" : "円", "", prev.adr == null ? "" : `${jpMonth(prev.month)} ${yen(prev.adr)}円`),
-    ]),
+  const diff = d.total - prev.total;
+  const vs = el(
+    "p",
+    { cls: "vs" },
+    diff === 0
+      ? [`${shortMonth(prev.month)}と同じです`]
+      : [`${shortMonth(prev.month)}より `, el("b", { cls: diff > 0 ? "up" : "", text: `${diff > 0 ? "＋" : "−"}${yen(Math.abs(diff))}円` }), diff > 0 ? " 増えました" : " 減りました"],
+  );
+
+  // 泊まり済み／これから／キャンセル料（今日より前の夜＝泊まり済み）
+  const parts = [
+    { label: "泊まり済み", value: d.sales_stayed, cls: "c1" },
+    { label: "これから泊まる分", value: d.sales_upcoming, cls: "c3" },
+    { label: "キャンセル料", value: d.cancel_fees, cls: "c2" },
+  ].filter((x) => x.value > 0);
+  const sum = parts.reduce((t, x) => t + x.value, 0);
+  let x = 0;
+  const rects = parts.map((pt) => {
+    const w = (pt.value / sum) * 1000;
+    const r = svg("rect", { x, y: 0, width: w, height: 22, class: pt.cls });
+    x += w;
+    return r;
+  });
+  const split = sum > 0 ? svg("svg", { class: "split", viewBox: "0 0 1000 22", preserveAspectRatio: "none", "aria-hidden": "true" }, rects) : null;
+  const legend = el(
+    "ul",
+    { cls: "split-legend" },
+    parts.map((pt) => el("li", {}, [el("span", { cls: `sw ${pt.cls}`, attrs: { "aria-hidden": "true" } }), el("span", { text: pt.label }), el("b", { text: `${yen(pt.value)}円` })])),
+  );
+
+  return el("article", { cls: "card hero-card" }, [
+    el("p", { cls: "hero-label", text: `${shortMonth(d.month)}の売上` }),
+    el("p", { cls: "hero" }, [yen(d.total), el("span", { cls: "unit", text: "円" })]),
+    vs,
+    split,
+    parts.length ? legend : null,
+    d.sales_upcoming > 0 ? el("p", { cls: "sub", text: `「これから」は ${jpDate(d.today, false)}より後の夜の分です。` }) : null,
+    el("p", { cls: "sub", text: `宿泊税 ${yen(d.lodging_tax)}円は預かったお金なので、売上に入れていません。泊まった日で数えていて、月をまたぐ予約は泊まった夜の分だけこの月に入れます。` }),
   ]);
+}
 
-  // 泊まり済み／これから（今日より前の夜＝泊まり済み）
-  if (d.sales > 0) {
-    const bar = el("progress", { attrs: { max: d.sales, value: d.sales_stayed, "aria-label": "売上のうち泊まり済みの分" } });
-    card.append(
-      el("div", { cls: "meter kpi-meter" }, [
-        bar,
-        el("p", { text: ahead ? `泊まり済み ${yen(d.sales_stayed)}円 ／ これから ${yen(d.sales_upcoming)}円（${jpDate(d.today, false)}より後の夜）` : `すべて泊まり済みです（${yen(d.sales_stayed)}円）` }),
-      ]),
-    );
-  }
-  if (d.cancel_fees > 0) card.append(el("p", { cls: "notice info", text: `売上のうち ${yen(d.cancel_fees)}円 はキャンセル料です（泊まっていないので、埋まった割合と平均には入れていません）` }));
-
-  // 手数料の出どころ
+// 2枚目：手元に残るお金（レシートの形）。見込みを含むときは「見込み」と書く
+function kpiKeepCard(d) {
+  const est = d.sales_upcoming > 0 || d.fee_estimate > 0;
+  const known = d.fee != null && d.net != null;
+  const row = (label, value, cls = null) => el("div", { cls }, [el("dt", { text: label }), el("dd", { text: value })]);
+  const rows = [
+    row("売上", `${yen(d.sales)}円`),
+    row("キャンセル料", `${yen(d.cancel_fees)}円`),
+    row("予約サイトの手数料", d.fee == null ? "分からない" : `−${yen(d.fee)}円`, "minus"),
+    el("div", { cls: "total keep-total" }, [el("dt", { text: "手取り" }), el("dd", {}, known ? [yen(d.net), el("span", { cls: "unit", text: "円" })] : ["—"])]),
+  ];
+  const notes = [];
   if (d.fee == null) {
-    card.append(el("p", { cls: "notice warn", text: "手数料が分からない予約があります。お金の照合で予約サイトの明細を読み込むと出ます" }));
-  } else if (estimated) {
-    const rates = Object.entries(d.fee_rates).map(([k, v]) => `${OTA[k] ?? k} ${pct(v)}%`).join("・");
-    card.append(el("p", { cls: "notice info", text: `手数料の一部は、明細がまだ無いので見込みです（これまでの明細の割合：${rates}）` }));
+    notes.push(el("p", { cls: "notice warn", text: "手数料が分からない予約があります。お金の照合で予約サイトの明細を読み込むと出ます" }));
+  } else if (d.fee_estimate > 0) {
+    const rates = Object.entries(d.fee_rates ?? {}).map(([k, v]) => `${OTA[k] ?? k} ${pct(v)}%`).join("・");
+    notes.push(el("p", { cls: "sub", text: `予約サイトの明細がまだ無い分は、これまでの明細の割合${rates ? `（${rates}）` : ""}から手数料を見込んでいます。明細が届いたら正しい額に変わります。` }));
   }
-  if (d.unknown_tax_included > 0) card.append(el("p", { cls: "notice warn", text: `宿泊税の預かった額が分からない予約が ${d.unknown_tax_included}件 あります。その分は宿泊税を引かずに売上に入れています` }));
-  card.append(el("p", { cls: "notice info", text: `宿泊税 ${yen(d.lodging_tax)}円 は売上に入れていません（ゲストから預かったお金です）` }));
+  if (d.sales_upcoming > 0) notes.push(el("p", { cls: "sub", text: "これから泊まる分も入っています。キャンセルがあると変わります。" }));
+  if (d.unknown_tax_included > 0) notes.push(el("p", { cls: "notice warn", text: `宿泊税の預かった額が分からない予約が ${d.unknown_tax_included}件 あります。その分は宿泊税を引かずに売上に入れています` }));
+  return el("article", { cls: "card" }, [
+    el("h2", { cls: "card-title" }, ["手元に残るお金", est ? el("span", { cls: "tag-est", text: "見込み" }) : null]),
+    el("dl", { cls: "receipt" }, rows),
+    ...notes,
+  ]);
+}
 
-  // 照合は1行だけ（入金のずれがあるときだけ目立たせる）
+// 部屋が埋まった割合・1部屋1泊の平均
+function kpiFactsCard(d) {
+  const prev = d.previous;
+  const fact = (label, small, value, unit) =>
+    el("div", {}, [el("dt", {}, [label, small ? el("small", { text: small }) : null]), el("dd", {}, value == null ? ["—"] : [value, el("span", { cls: "unit", text: unit })])]);
+  return el("article", { cls: "card" }, [
+    el("dl", { cls: "facts" }, [
+      fact("部屋が埋まった割合", `${d.rooms}部屋×${d.days}日のうち ${d.room_nights}泊`, pct(d.occupancy_pct), "%"),
+      fact("1部屋1泊の平均", prev.adr == null ? "" : `${shortMonth(prev.month)}は ${yen(prev.adr)}円`, d.adr == null ? null : yen(d.adr), "円"),
+    ]),
+    d.cancel_fees > 0 ? el("p", { cls: "sub", text: "キャンセル料は泊まっていない分なので、この2つには入れていません。" }) : null,
+  ]);
+}
+
+// 照合への案内は1行だけ（入金のずれがあるときだけ目立たせる）
+function kpiLinks(d) {
   if (d.open_discrepancies > 0) {
-    card.append(el("div", { cls: "notice warn kpi-link" }, [el("span", { text: `入金のずれが ${d.open_discrepancies}件 あります` }), btn("お金の照合を開く", () => selectTab("money"), "btn small")]));
-  } else if (!d.statements_loaded) {
-    card.append(el("div", { cls: "notice info kpi-link" }, [el("span", { text: "予約サイトの明細を読み込むと、手数料が実際の額になります" }), btn("お金の照合を開く", () => selectTab("money"), "btn small")]));
+    return [el("div", { cls: "notice warn kpi-link" }, [el("span", { text: `入金のずれが ${d.open_discrepancies}件 あります` }), btn("お金の照合を開く", () => go("money"), "btn small")])];
   }
-  return card;
+  if (!d.statements_loaded) {
+    return [el("div", { cls: "notice info kpi-link" }, [el("span", { text: "予約サイトの明細を読み込むと、手数料が実際の額になります" }), btn("お金の照合を開く", () => go("money"), "btn small")])];
+  }
+  return [];
+}
+
+// ドーナツの図（どこから予約が入ったか）。色だけで伝えないよう、名前・割合・金額の一覧と表を必ず付ける
+function kpiDonut(d) {
+  const items = d.by_ota
+    .map((o) => ({ name: OTA[o.ota] ?? o.ota, value: o.sales + o.cancel_fees, nights: o.room_nights }))
+    .filter((o) => o.value > 0)
+    .sort((a, b) => b.value - a.value);
+  if (!items.length) return null;
+  let slices = items;
+  if (items.length >= 4) {
+    const rest = items.slice(2);
+    slices = [...items.slice(0, 2), { name: "そのほか", value: rest.reduce((t, o) => t + o.value, 0), nights: rest.reduce((t, o) => t + o.nights, 0) }];
+  }
+  const sum = slices.reduce((t, o) => t + o.value, 0);
+  const share = (v) => Math.round((v / sum) * 100);
+  const C = 2 * Math.PI * 48;
+  let off = 0;
+  const circles = slices.map((s, i) => {
+    const len = (s.value / sum) * C;
+    const c = svg("circle", { cx: 60, cy: 60, r: 48, "stroke-width": 22, class: `c${i + 1}`, "stroke-dasharray": `${len} ${C}`, "stroke-dashoffset": -off });
+    off += len;
+    return c;
+  });
+  const chart = svg("svg", { class: "donut", viewBox: "0 0 120 120", role: "img", "aria-label": slices.map((s) => `${s.name} ${share(s.value)}%`).join("、") }, [
+    svg("g", { transform: "rotate(-90 60 60)" }, circles),
+    svg("text", { x: 60, y: 66, "text-anchor": "middle" }, ["売上"]),
+  ]);
+  const legend = el(
+    "ul",
+    { cls: "legend" },
+    slices.map((s, i) =>
+      el("li", {}, [
+        el("span", { cls: `sw c${i + 1}`, attrs: { "aria-hidden": "true" } }),
+        el("span", { cls: "lg-name", text: s.name }),
+        el("span", { cls: "lg-pct", text: `${share(s.value)}%` }),
+        el("span", { cls: "lg-amt" }, [el("span", { text: `${s.nights}泊` }), el("span", { text: `${yen(s.value)}円` })]),
+      ]),
+    ),
+  );
+  return el("div", { cls: "donut-wrap" }, [chart, legend]);
 }
 
 function kpiOtaCard(d) {
@@ -262,10 +363,13 @@ function kpiOtaCard(d) {
   for (const o of d.by_ota) rows.push([OTA[o.ota] ?? o.ota, o.room_nights, o.sales + o.cancel_fees, o.fee ?? "分からない", o.ota === "direct" ? "かからない" : o.fee_estimate > 0 ? "見込みを含む" : "明細", o.net ?? ""]);
   rows.push(["合計", d.room_nights, d.total, d.fee ?? "分からない", "", d.net ?? ""]);
   return el("article", { cls: "card" }, [
-    el("h2", { text: "予約サイトごと" }),
-    el("p", { cls: "lead", text: "どこから来た予約が、いくら残ったか" }),
-    el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), tbody])]),
-    el("div", { cls: "btns" }, [btn("CSVを保存", () => downloadCsv(`今月の数字_${d.month}.csv`, rows))]),
+    el("h2", { cls: "card-title", text: "どこから予約が入ったか" }),
+    kpiDonut(d),
+    el("details", {}, [
+      el("summary", { text: "予約サイトごとの表を開く（手数料・手取りも）" }),
+      el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), tbody])]),
+      el("div", { cls: "btns" }, [btn("CSVを保存", () => downloadCsv(`今月の数字_${d.month}.csv`, rows))]),
+    ]),
   ]);
 }
 
@@ -1481,21 +1585,64 @@ function reasonView(d) {
   return out;
 }
 
-// ---- タブ ----
+// ---- ホームと画面の切り替え ----
+// アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
 const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney };
+const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合" };
 
-function selectTab(name) {
-  for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t.dataset.tab === name));
+function show(name) {
+  if (!(name in SHOW)) name = "home";
+  $("panel-home").hidden = name !== "home";
   for (const k of Object.keys(SHOW)) $(`panel-${k}`).hidden = k !== name;
+  $("back").hidden = name === "home";
+  document.title = name === "home" ? "AI番頭" : `${TITLE[name]}｜AI番頭`;
+  window.scrollTo(0, 0);
+  if (name === "home") {
+    loadFacts();
+    return;
+  }
   if (!state.loaded[name]) {
     state.loaded[name] = true;
     SHOW[name]();
   }
 }
 
+function go(name) {
+  if (location.hash.slice(1) === name) show(name);
+  else location.hash = name;
+}
+
+// ホームの行の数字：プログラムが数えた値だけを出す。読めなかったら説明の言葉のまま
+async function loadFacts() {
+  const m = state.today.slice(0, 7);
+  const mm = shortMonth(m);
+  const set = (id, parts) => $(id).replaceChildren(...parts);
+  await Promise.allSettled([
+    api(`/api/kpis?month=${m}`).then((d) => set("fact-kpi", [`${mm}の売上 `, el("b", { text: `${yen(d.total)}円` })])),
+    // 宿泊税は申告する月（先月分）を出す。宿泊税の画面も先月から開く
+    api(`/api/tax?month=${state.taxMonth}`).then((d) =>
+      set("fact-tax", [`${shortMonth(state.taxMonth)}分　`, el("b", { text: `${d.person_nights}人泊・${yen(d.tax_amount)}円` })]),
+    ),
+    api("/api/minpaku/counter").then((d) =>
+      set("fact-minpaku", d.remaining_days > 0 ? [`${d.limit}日のうち 残り`, el("b", { text: `${d.remaining_days}日` }), miniBar(d)] : [`${d.limit}日の上限に`, el("b", { text: "達しています" }), miniBar(d)]),
+    ),
+  ]);
+}
+
+// 180日の小さな棒：泊まった日（紺）と予約済みの日（水色）
+function miniBar(d) {
+  const w = (n) => Math.max(0, Math.min(1000, (n / d.limit) * 1000));
+  const used = w(d.used_days);
+  const booked = Math.min(w(d.booked_days), 1000 - used);
+  return svg("svg", { class: `mini-bar ${d.level ?? ""}`.trim(), viewBox: "0 0 1000 8", preserveAspectRatio: "none", "aria-hidden": "true" }, [
+    svg("rect", { x: 0, y: 0, width: 1000, height: 8, class: "rest" }),
+    svg("rect", { x: 0, y: 0, width: used, height: 8, class: "used" }),
+    svg("rect", { x: used, y: 0, width: booked, height: 8, class: "booked" }),
+  ]);
+}
+
 async function start() {
-  for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => selectTab(t.dataset.tab));
   try {
     const d = await api("/api/reservations");
     state.today = d.today;
@@ -1503,7 +1650,7 @@ async function start() {
     $("today").textContent = jpDate(d.today);
   } catch (err) {
     $("inn-name").textContent = "読み込めませんでした";
-    $("panel-kpi").replaceChildren(errorBox(err, () => location.reload()));
+    $("panel-home").replaceChildren(errorBox(err, () => location.reload()));
     return;
   }
   // 宿泊税は先月分、定期報告は期限がいちばん近い期間（終わったばかりの期間）を最初に出す
@@ -1513,7 +1660,8 @@ async function start() {
   const curStart = Number(month.slice(5, 7)) % 2 === 1 ? addMonths(month, -1) : month;
   const prevStart = addMonths(curStart, -2);
   state.period = `${prevStart}_${addMonths(prevStart, 1).slice(5, 7)}`;
-  selectTab("kpi");
+  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
 }
 
 start();
