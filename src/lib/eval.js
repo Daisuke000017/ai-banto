@@ -1,7 +1,7 @@
 // 成績（M9・O-4-6）と、チームの働きぶり（O-3）
 // - 例題（src/lib/eval-cases.js・すべて架空）を、手元のスクリプト（scripts/run-eval.js）で流して採点する。画面からは流さない
 // - 正解（expected）は AI にも監査役にも渡さない。採点はプログラムだけで行う
-// - 3つのやり方を比べる：full＝手引きあり＋監査役あり／no_skill＝手引きなし／no_audit＝監査役なし
+// - 3つのやり方を比べる：full＝手引きあり＋監査役あり（画面では「両方あり」）／no_skill＝手引きなし／no_audit＝監査役なし
 //   （プログラムの点検は、どのやり方でも通す）
 // - 画面には「自作の例題40件での結果」とだけ書く。一般的な正しさの数字ではない
 import { callJson } from "./anthropic.js";
@@ -12,7 +12,7 @@ import { languageProblem, placeholderProblems } from "./arrival.js";
 import { KEIRI_SKILL, OMOTENASHI_SKILL, withSkill } from "./skills.js";
 
 export const VARIANTS = {
-  full: { skill: true, audit: true, label: "手引きあり＋監査役あり" },
+  full: { skill: true, audit: true, label: "両方あり" },
   no_skill: { skill: false, audit: true, label: "手引きなし" },
   no_audit: { skill: true, audit: false, label: "監査役なし" },
 };
@@ -382,6 +382,7 @@ export async function evalResults(db) {
     )
     .bind(latest.batch_id)
     .all();
+  const sum = summarize(results);
   return {
     label: EVAL_LABEL,
     empty: false,
@@ -389,8 +390,40 @@ export async function evalResults(db) {
     run_at: latest.run_at,
     case_count: caseCount,
     variants: Object.entries(VARIANTS).map(([variant, v]) => ({ variant, label: v.label })),
-    ...summarize(results),
+    ...sum,
+    headline: evalHeadline(sum.totals),
     examples: sendBackExamples(results),
+  };
+}
+
+/**
+ * 成績の結論の1文。集計の数字だけから組み立てる（AIに書かせない・手で書かない）。
+ * 本命（full）と監査役なし（no_audit）を比べ、本命の弱み（余計な差し戻し）も添える
+ */
+export function evalHeadline(totals) {
+  const f = totals.find((t) => t.variant === "full");
+  const a = totals.find((t) => t.variant === "no_audit");
+  if (!f?.n || !a?.n) return null;
+  const change = (x, y, up, down, same) => (y > x ? up : y < x ? down : same);
+  // 「2件 → 3件」が行の途中で切れないよう、矢印の前後は改行しない空白にする
+  const ab = (x, y) => `${x}件 → ${y}件`;
+  const missed = change(
+    f.missed,
+    a.missed,
+    `止められなかった間違いが ${ab(f.missed, a.missed)}に増え`,
+    `止められなかった間違いは ${ab(f.missed, a.missed)}に減り`,
+    `止められなかった間違いは ${f.missed}件のまま変わらず`,
+  );
+  const flagged = change(
+    f.flagged,
+    a.flagged,
+    `人の確認に回せたものは ${ab(f.flagged, a.flagged)}に増えました`,
+    `人の確認に回せたものは ${ab(f.flagged, a.flagged)}に減りました`,
+    `人の確認に回せたものは ${f.flagged}件のままでした`,
+  );
+  return {
+    main: `監査役を外すと、${missed}、${flagged}`,
+    sub: f.false_alarm ? `そのかわり、合っていた下書きを監査役が差し戻したことも ${f.false_alarm}回ありました` : "",
   };
 }
 

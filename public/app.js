@@ -1815,7 +1815,21 @@ async function showEval() {
       p.replaceChildren(head);
       return;
     }
-    head.append(el("p", { cls: "sub", text: `流した日：${jpTime(d.run_at)}（3つのやり方 × 例題${d.case_count}件）` }));
+    // 結論の1文（サーバーが数字から組み立てたもの）を、数字のカードより先に置く
+    if (d.headline) {
+      head.append(
+        el("div", { cls: "eval-headline" }, [
+          el("p", { cls: "eval-headline-main", text: d.headline.main }),
+          d.headline.sub ? el("p", { cls: "eval-headline-sub", text: d.headline.sub }) : null,
+        ]),
+      );
+    }
+    head.append(
+      el("p", {
+        cls: "sub",
+        text: `流した日：${jpTime(d.run_at)}。例題${d.case_count}件を3つのやり方で解かせました。「両方あり」は、手引きと監査役がそろったふだんの形です`,
+      }),
+    );
     p.replaceChildren(head, evalTotals(d), evalTable(d), evalExamples(d));
   } catch (err) {
     p.replaceChildren(errorBox(err, showEval));
@@ -1824,7 +1838,9 @@ async function showEval() {
 
 const rate = (a, n) => (n ? Math.round((a / n) * 100) : 0);
 
-// やり方ごとの合計：正解・止められずに出た間違い・人の確認に回した・余計な差し戻し
+// やり方ごとの合計
+// 上の段＝比べてほしい2つ（止められなかった・人の確認へ）。下の段＝正解・余計な差し戻し（控えめ）
+// ラベルは短くし、折れてよい所にだけ「幅のない空白」（​）を入れる。CSS の keep-all で、ほかの所では折れない
 function evalTotals(d) {
   return el(
     "div",
@@ -1832,32 +1848,51 @@ function evalTotals(d) {
     d.totals.map((t) =>
       el("article", { cls: `card eval-card${t.variant === "full" ? " is-main" : ""}` }, [
         el("h3", { cls: "card-title", text: t.label }),
+        evalCredits(t.variant),
         el("dl", { cls: "nums" }, [
-          num("正解", `${t.correct}/${t.n}`, "件", "", `${rate(t.correct, t.n)}%`),
-          num("止められずに出た間違い", t.missed, "件", t.missed ? "is-danger" : "is-ok"),
-          num("人の確認に回した", t.flagged, "件", t.flagged ? "is-warn" : ""),
-          num("余計な差し戻し", t.false_alarm, "回"),
+          num("止められ​なかった", t.missed, "件", t.missed ? "is-danger" : "is-ok"),
+          num("人の確認へ", t.flagged, "件", t.flagged ? "is-warn" : ""),
+          num("正解", `${t.correct}/${t.n}`, "件", "is-minor", `${rate(t.correct, t.n)}%`),
+          num("余計な​差し戻し", t.false_alarm, "回", "is-minor"),
         ]),
       ]),
     ),
   );
 }
 
+// だれが確かめたかを、上の帯と同じ形の「監査役」の札で見せる。監査役を外したやり方は札を出さない
+function evalCredits(variant) {
+  if (variant === "no_audit") {
+    return el("p", { cls: "credits" }, [el("span", { text: "確かめた" }), el("span", { text: "プログラムだけ" })]);
+  }
+  return el("p", { cls: "credits", attrs: { "aria-label": "監査役とプログラムが確かめました" } }, [
+    el("span", { text: "確かめた" }),
+    el("span", { cls: "role-pill", text: "監査役" }),
+    el("span", { text: "とプログラム" }),
+  ]);
+}
+
 // 分野 × やり方の表（正解の数）
+// スマホでは列の見出しを隠し、数字の上に同じやり方の名前を出す（pc の列見出し・カードの見出しと同じ言葉）
 function evalTable(d) {
+  const vlabel = Object.fromEntries(d.variants.map((v) => [v.variant, v.label]));
   const head = el("tr", {}, [el("th", { text: "分野" }), ...d.variants.map((v) => el("th", { cls: "n", text: v.label }))]);
   const rows = d.domains.map((dm) =>
     el("tr", {}, [
       el("th", { attrs: { scope: "row" }, text: dm.label }),
       ...dm.variants.map((c) =>
-        el("td", { cls: "n" }, [`${c.correct}/${c.n}`, c.missed ? el("span", { cls: "cell-sub danger", text: `止められず${c.missed}` }) : null]),
+        el("td", { cls: "n" }, [
+          el("span", { cls: "cell-label", attrs: { "aria-hidden": "true" }, text: vlabel[c.variant] || c.variant }),
+          el("span", { cls: "cell-num", text: `${c.correct}/${c.n}` }),
+          c.missed ? el("span", { cls: "cell-sub danger", text: `止められず${c.missed}` }) : null,
+        ]),
       ),
     ]),
   );
   return el("article", { cls: "card" }, [
     el("h3", { cls: "card-title", text: "分野ごとの正解" }),
     el("p", { cls: "lead", text: "手引き（Skill）や監査役を外すと、どこで間違いが増えるかを比べます" }),
-    el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), el("tbody", {}, rows)])]),
+    el("div", { cls: "table-wrap" }, [el("table", { cls: "eval-domains" }, [el("thead", {}, [head]), el("tbody", {}, rows)])]),
   ]);
 }
 
@@ -1870,7 +1905,7 @@ function evalExamples(d) {
         d.examples.map((x) =>
           el("li", {}, [
             el("p", { cls: "sb-note", text: `${x.note}（${d.domains.find((m) => m.domain === x.domain)?.label ?? x.domain}）` }),
-            el("p", { cls: "run-reason", text: `監査役：${x.reason}` }),
+            el("p", { cls: "run-reason" }, [el("span", { cls: "role-pill", text: "監査役" }), el("span", { text: x.reason })]),
             el("span", { cls: `pill ${x.fixed ? "ok" : "warn"}`, text: x.fixed ? "直して正解" : "人の確認へ" }),
           ]),
         ),

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { EVAL_CASES } from "../src/lib/eval-cases.js";
 import {
+  evalHeadline,
   gradeBus,
   gradeKeiri,
   gradeMinpaku,
@@ -120,6 +121,20 @@ test("人の確認に回した数：答えが合っていても監査役が止�
     { domain: "minpaku", variant: "full", correct: 1, missed: 0, false_alarm: 0, output_json: "{壊れた" },
   ];
   assert.equal(summarize(rows).totals.find((t) => t.variant === "full").flagged, 1);
+});
+
+test("成績の結論の1文：数字から組み立てる（増えた・減った・同じ・本命の弱みも書く）", () => {
+  const t = (v, missed, flagged, false_alarm = 0) => ({ variant: v, n: 40, correct: 37, missed, flagged, false_alarm });
+  const h = evalHeadline([t("full", 2, 2, 4), t("no_skill", 2, 1), t("no_audit", 3, 0)]);
+  assert.equal(h.main, "監査役を外すと、止められなかった間違いが 2件 → 3件に増え、人の確認に回せたものは 2件 → 0件に減りました");
+  assert.equal(h.sub, "そのかわり、合っていた下書きを監査役が差し戻したことも 4回ありました");
+  // 監査役なしの方が良くても、そのまま書く（都合よく隠さない）
+  const same = evalHeadline([t("full", 2, 1), t("no_audit", 2, 1)]);
+  assert.match(same.main, /2件のまま変わらず、.*1件のままでした$/);
+  assert.equal(same.sub, "");
+  assert.match(evalHeadline([t("full", 3, 0), t("no_audit", 1, 2)]).main, /3件 → 1件に減り、.*0件 → 2件に増えました$/);
+  // まだ流していない
+  assert.equal(evalHeadline([{ variant: "full", n: 0 }]), null);
 });
 
 test("監査役の理由：記号と英語の言葉を日本語にする", () => {
