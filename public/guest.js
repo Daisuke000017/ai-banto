@@ -208,6 +208,8 @@ function renderLang() {
     b.addEventListener("click", () => chooseLang(l));
     list.append(b);
   }
+  // 言語を選ぶ前は、予約の言語ではなく、いちばん上に出したスマホの言語で注意書きを出す
+  $("foot").textContent = T[sug].foot;
   show("v-lang");
 }
 

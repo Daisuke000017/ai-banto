@@ -6,11 +6,16 @@ import { dayKind } from "./dates.js";
 const NAME_KEY = { ja: "name_ja", en: "name_en", ko: "name_ko", "zh-TW": "name_zh_hant" };
 const STOPS = new Map(busStops.map((s) => [s.id, s]));
 
-/** 停留所の名前（その言語の名前がなければ日本語名） */
+/**
+ * 停留所の名前。その言語の名前がなければ「日本語名 (英語名)」。
+ * 訳を作り足さないのは、まちがった名前を出さないため。日本語名はバス停の看板と見比べられるように残す
+ */
 export function stopName(id, lang) {
   const s = STOPS.get(id);
   if (!s) return id;
-  return s[NAME_KEY[lang] ?? "name_en"] ?? s.name_ja;
+  const own = s[NAME_KEY[lang] ?? "name_en"];
+  if (own) return own;
+  return s.name_en ? `${s.name_ja} (${s.name_en})` : s.name_ja;
 }
 
 // 便の注意書き（表に書いてあるもの）の訳。ここに無いものは日本語のまま出す

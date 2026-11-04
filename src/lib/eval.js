@@ -313,6 +313,9 @@ const REASON_JA = {
   missing_item: "抜けがある",
   asserts_certainty: "言い切りすぎ",
   overconfident: "言い切りすぎ",
+  promise_not_allowed: "約束できないこと",
+  wrong_language: "言葉がちがう",
+  unsafe: "安全でない書き方",
   other: "その他",
 };
 const WORD_JA = { facts: "材料", material: "材料", value: "答えの数", basis: "計算の説明", answer: "答え", checklist: "点検のめやす" };
@@ -321,6 +324,25 @@ export function reasonJa(s) {
   const m = t.match(/^([a-z_]+)\s*[：:]\s*/);
   if (m) t = `${REASON_JA[m[1]] ?? "その他"}：${t.slice(m[0].length)}`;
   return t.replace(/ ?\b(facts|material|value|basis|answer|checklist)\b ?/g, (_, w) => WORD_JA[w]);
+}
+
+// 仕事の記録の差し戻し理由（「監査役：code：中身／code：中身」）を、記号のない日本語にする。
+// 名札の矢印にもう「監査役」と出ているので、頭の「監査役：」は外す。プログラムの点検で止まったときは、そう書いて残す
+export function runReasonJa(s) {
+  if (s == null) return null;
+  let t = String(s);
+  let head = "";
+  if (t.startsWith("監査役：")) t = t.slice("監査役：".length);
+  else if (t.startsWith("プログラムの点検：")) {
+    head = "プログラムの点検：";
+    t = t.slice(head.length);
+  }
+  const body = t
+    .split("／")
+    .map((x) => reasonJa(x.trim()))
+    .filter(Boolean)
+    .join("／");
+  return (head + body).slice(0, 120);
 }
 
 /** 行（eval_runs と eval_cases をつないだもの）を、分野×やり方で数える */
@@ -473,7 +495,6 @@ export async function teamRuns(db, since = 0) {
   const by = (rows) => Object.fromEntries(rows.results.map((r) => [r.agent, r.n]));
   const sb = by(counts);
   const wk = by(working);
-  const short = (s) => (s == null ? null : String(s).slice(0, 120));
   return {
     latest_id: latest?.id ?? 0,
     agents: TEAM.map((t) => ({
@@ -482,8 +503,8 @@ export async function teamRuns(db, since = 0) {
       sent_back_count: sb[t.agent] ?? 0,
       recent: recent.results
         .filter((r) => r.agent === t.agent)
-        .map((r) => ({ id: r.id, task: TASK_JA[r.task] ?? r.task, status: r.status, created_at: r.created_at, sent_back_reason: short(r.sent_back_reason) })),
+        .map((r) => ({ id: r.id, task: TASK_JA[r.task] ?? r.task, status: r.status, created_at: r.created_at, sent_back_reason: runReasonJa(r.sent_back_reason) })),
     })),
-    new_sent_back: fresh.results.map((r) => ({ id: r.id, agent: r.agent, task: TASK_JA[r.task] ?? r.task, reason: short(r.sent_back_reason) })),
+    new_sent_back: fresh.results.map((r) => ({ id: r.id, agent: r.agent, task: TASK_JA[r.task] ?? r.task, reason: runReasonJa(r.sent_back_reason) })),
   };
 }

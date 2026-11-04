@@ -2,7 +2,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dayKind } from "../src/lib/dates.js";
-import { busBoard, parseClock } from "../src/lib/bus.js";
+import { busBoard, parseClock, stopName } from "../src/lib/bus.js";
+
+test("停留所の名前：訳がない停留所は「日本語名 (英語名)」。訳を作り足さない", () => {
+  assert.equal(stopName("aoshima", "ko"), "아오시마");
+  assert.equal(stopName("sunqmar", "ko"), "青島サンクマール (Aoshima Sunqmar)");
+  assert.equal(stopName("shirahama", "zh-TW"), "白浜入口 (Shirahama Iriguchi)");
+  assert.equal(stopName("shirahama", "en"), "Shirahama Iriguchi");
+  assert.equal(stopName("shirahama", "ja"), "白浜入口");
+});
 
 const dir = (b, d) => b.directions.find((x) => x.direction === d);
 

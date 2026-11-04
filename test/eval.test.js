@@ -12,6 +12,7 @@ import {
   replyProblems,
   runCase,
   reasonJa,
+  runReasonJa,
   sendBackExamples,
   summarize,
   TEAM,
@@ -141,6 +142,14 @@ test("監査役の理由：記号と英語の言葉を日本語にする", () =>
   assert.equal(reasonJa("not_from_facts：facts にない。value と basis が違う"), "材料にないこと：材料にない。答えの数と計算の説明が違う");
   assert.equal(reasonJa("ふつうの文"), "ふつうの文");
   assert.equal(reasonJa("zzz: 何か"), "その他：何か");
+});
+
+test("仕事の記録の差し戻し理由：頭の「監査役：」を外し、記号を1つずつ日本語にする", () => {
+  assert.equal(runReasonJa("監査役：invented_fact：駐車場のことを書いた／wrong_number：人数が違う"), "材料にないこと：駐車場のことを書いた／数字が合わない：人数が違う");
+  assert.equal(runReasonJa("監査役：監査役が差し戻しました"), "監査役が差し戻しました");
+  assert.equal(runReasonJa("プログラムの点検：暗証番号の記号がない"), "プログラムの点検：暗証番号の記号がない");
+  assert.equal(runReasonJa(null), null);
+  assert.doesNotMatch(runReasonJa("監査役：wrong_language：中国語でない／unsafe：安全と言い切った"), /[a-z_]{4,}/);
 });
 
 test("チームの係は記録の表の5つと同じ／eval.js の係の名前も表にある", async () => {

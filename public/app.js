@@ -240,7 +240,7 @@ function renderTeamLog() {
   box.replaceChildren(
     el("div", { cls: "team-log-head" }, [el("h2", { cls: "card-title", text: `${name}の最近の仕事` }), close]),
     list,
-    el("p", { cls: "sub", text: `${a.agent === "kansa" ? "" : `監査役に差し戻された回数：${a.sent_back_count}回。`}記録には、何の仕事かと結果だけを出します（宿泊者の名前や文の中身は出しません）` }),
+    el("p", { cls: "sub", text: `${a.agent === "kansa" ? "" : `監査役に差し戻された回数：${a.sent_back_count}回。`}記録には、何の仕事かと結果だけを出します（宿泊者の名前や文の中身は出しません）。時刻は、AIが実際に働いた日時です（デモの日付とはちがいます）` }),
   );
 }
 
@@ -1845,6 +1845,8 @@ async function toggleDrill() {
   try {
     if (drill.active) {
       renderDrill(await api("/api/drill", { method: "POST", body: { action: "end" } }));
+      // 訓練の下書きは消えるので、「OK を押してください」の一言も残さず、ふだんの一言に戻す
+      team([], null);
       toast("訓練を終えました。ゲストの画面はふだんに戻ります");
       return;
     }
