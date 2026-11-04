@@ -473,3 +473,29 @@ textarea.note-in { min-height: 64px; }
 /* ゲスト用URLのQRコード（スマホのカメラで読む） */
 .qr { display: block; width: 240px; height: 240px; margin: var(--s3) 0; }
 .plain-list { margin: 0; padding-left: 1.2em; }
+
+/* 訓練（O-5）：いつも上の帯にあるボタン。訓練中は画面のふちを赤く囲み、帯に「訓練中」を出す */
+.drill-btn { margin-left: var(--s2); border-color: var(--danger); color: var(--danger); background: var(--surface); }
+.drill-btn[aria-pressed="true"] { background: var(--danger); color: #fff; }
+.drill-banner {
+  margin-top: var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-left: 6px solid var(--danger);
+  word-break: auto-phrase;
+}
+.drill-label { font-size: 20px; font-weight: 700; }
+body.drill::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  border: 6px solid var(--danger);
+  pointer-events: none;
+  z-index: 50;
+}
+.drill-panel { display: grid; gap: var(--s4); margin-bottom: var(--s5); }
+.card.evac { border-left: 6px solid var(--danger); }
+@media (max-width: 560px) {
+  .drill-btn { margin-left: 0; margin-top: var(--s2); width: 100%; }
+}

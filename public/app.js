@@ -687,14 +687,15 @@ function maskedText(text, cls = "draft-text") {
 function draftCard(d) {
   const st = STATUS[d.status] ?? STATUS.draft;
   const isAi = d.source === "ai";
-  const card = el("article", { cls: "card", attrs: { id: `draft-${d.id}` } });
+  const isEvac = d.kind === "evacuation";
+  const card = el("article", { cls: `card${isEvac ? " evac" : ""}`, attrs: { id: `draft-${d.id}` } });
   const body = el("div");
   const actions = el("div", { cls: "btns" });
 
   card.append(
     el("div", { cls: "card-head" }, [
       el("div", {}, [
-        el("h2", { text: `到着案内（${LANG[d.language] ?? d.language}）` }),
+        el("h2", { text: `${isEvac ? "避難の案内（訓練）" : "到着案内"}（${LANG[d.language] ?? d.language}）` }),
         // 誰が書き、誰が確かめたかを上の帯と同じ形の札で見せる
         isAi
           ? el("p", { cls: "credits", attrs: { "aria-label": "宿泊担当が書き、監査役とプログラムが確かめた下書きです" } }, [
@@ -743,7 +744,8 @@ function draftCard(d) {
       btn("OK", () => doOk(), canOk ? "btn primary" : "btn"),
       btn("直す", () => editMode()),
       btn("コピー", () => doCopy(), canCopy ? "btn primary" : "btn"),
-      btn("ゲスト用URLをつくる", () => doLink(), "btn"),
+      // 避難の案内は、ゲスト用URLとは関係がないのでボタンを出さない
+      ...(isEvac ? [] : [btn("ゲスト用URLをつくる", () => doLink(), "btn")]),
     );
     actions.children[0].disabled = !canOk;
     actions.children[2].disabled = !canCopy;
@@ -757,7 +759,12 @@ function draftCard(d) {
     // 直すときは、書き終えた所で押せるよう文の下に置く
     body.after(actions);
     body.replaceChildren(
-      el("p", { cls: "notice info", text: `「${MASK}」の所に、コピーのとき暗証番号が入ります。消さないでください。暗証番号そのものは書かないでください` }),
+      el("p", {
+        cls: "notice info",
+        text: isEvac
+          ? "避難先の名前・距離・地図のリンクは、プログラムが入れた正しい値です。変えないでください"
+          : `「${MASK}」の所に、コピーのとき暗証番号が入ります。消さないでください。暗証番号そのものは書かないでください`,
+      }),
       ta,
       problems,
     );
@@ -800,7 +807,7 @@ function draftCard(d) {
       const r = await req;
       if (!canPromise) await navigator.clipboard.writeText(r.text);
       const miss = [!r.door_code_set && "暗証番号", !r.address_set && "住所"].filter(Boolean);
-      toast(miss.length ? `コピーしました。ただし${miss.join("と")}が設定されていないので「未設定」と入っています` : "コピーしました（暗証番号も入っています）。送るのはご本人です");
+      toast(isEvac ? "コピーしました。送るのはご本人です（訓練の案内です）" : miss.length ? `コピーしました。ただし${miss.join("と")}が設定されていないので「未設定」と入っています` : "コピーしました（暗証番号も入っています）。送るのはご本人です");
       d = { ...d, status: "copied" };
       refresh();
     } catch (err) {
@@ -839,7 +846,7 @@ function draftCard(d) {
     const next = draftCard(d);
     card.replaceWith(next);
     // 一覧の札もそろえる
-    showGuestListOnly();
+    if (!isEvac) showGuestListOnly();
   }
 
   viewMode();
@@ -1585,6 +1592,80 @@ function reasonView(d) {
   return out;
 }
 
+// ---- 訓練（O-5）----
+// ボタンを押すと「訓練中」になり、ゲストの画面は災害モード（G-5）になる。もう一度押すと終わる。
+// 泊まっているゲストごとに、その人の言葉で避難の案内の下書きをつくる（送るボタンはない）。
+
+const EVAC_STEPS = [
+  [["banto"], "番頭が、いま泊まっているゲストと言葉を確かめています"],
+  [["shukuhaku"], "宿泊担当が、ゲストの言葉で避難の案内を書いています"],
+  [["kansa"], "監査役とプログラムが、避難先と決まりに合っているか確かめています"],
+];
+const drill = { active: false, busy: false };
+
+async function loadDrill() {
+  try {
+    renderDrill(await api("/api/drill"));
+  } catch {
+    // 訓練の状態が読めなくても、ほかの画面は使える
+  }
+}
+
+function renderDrill(d, working = null) {
+  drill.active = Boolean(d.active);
+  document.body.classList.toggle("drill", drill.active);
+  $("drill-banner").hidden = !drill.active;
+  const b = $("drill-btn");
+  b.textContent = drill.active ? "訓練を終える" : "訓練：津波注意報";
+  b.setAttribute("aria-pressed", String(drill.active));
+  b.disabled = drill.busy;
+  const p = $("drill-panel");
+  p.hidden = !drill.active;
+  if (!drill.active) {
+    p.replaceChildren();
+    return;
+  }
+  const head = el("article", { cls: "card" }, [
+    el("h2", { text: "避難の案内（訓練）" }),
+    el("p", { cls: "lead", text: "いま泊まっているゲストに、その人の言葉で避難の案内を下書きします。避難先と距離はプログラムが入れます。送るボタンはありません。確かめてコピーし、ご本人が送ってください" }),
+  ]);
+  if (working) {
+    head.append(loading(working));
+    p.replaceChildren(head);
+    return;
+  }
+  if (!d.staying?.length) head.append(el("p", { cls: "state", text: "いま泊まっているゲストはいません。下書きはつくりませんでした" }));
+  else head.append(el("p", { cls: "sub", text: `いま泊まっているゲスト：${d.staying.length}組（${d.staying.map((s) => LANG[s.language] ?? s.language).join("・")}）` }));
+  p.replaceChildren(head, ...(d.drafts ?? []).map(draftCard));
+}
+
+async function toggleDrill() {
+  if (drill.busy) return;
+  drill.busy = true;
+  try {
+    if (drill.active) {
+      renderDrill(await api("/api/drill", { method: "POST", body: { action: "end" } }));
+      toast("訓練を終えました。ゲストの画面はふだんに戻ります");
+      return;
+    }
+    renderDrill({ active: true }, "下書きをつくっています");
+    window.scrollTo(0, 0);
+    teamWorking((note) => renderDrill({ active: true }, `${note}（1人10〜20秒ほど）`), EVAC_STEPS);
+    const d = await api("/api/drill", { method: "POST", body: { action: "start" } });
+    teamDone("避難の案内の下書きができました。内容を見て OK を押してください");
+    drill.busy = false;
+    renderDrill(d);
+  } catch (err) {
+    teamDone();
+    toast(errorText(err));
+    drill.busy = false;
+    await loadDrill();
+  } finally {
+    drill.busy = false;
+    $("drill-btn").disabled = false;
+  }
+}
+
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
@@ -1662,6 +1743,8 @@ async function start() {
   state.period = `${prevStart}_${addMonths(prevStart, 1).slice(5, 7)}`;
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
   show(location.hash.slice(1));
+  $("drill-btn").addEventListener("click", toggleDrill);
+  loadDrill();
 }
 
 start();

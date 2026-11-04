@@ -66,6 +66,8 @@
 
     <!-- G-3 ホーム -->
     <section id="v-home" class="view" hidden>
+      <!-- M15 災害モード（訓練）。中身は guest.js が入れる -->
+      <section class="drill-band" id="drill-band" role="alert" hidden></section>
       <header class="home-head">
         <p class="inn" id="h-inn"></p>
         <p class="dates" id="h-dates"></p>
@@ -122,7 +124,7 @@
             <svg class="ask-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 34h20"/><path d="M22 28l6 6-6 6"/><path d="M40 14H20"/><path d="M26 8l-6 6 6 6"/></svg>
             <span id="bus-ask-label"></span>
           </button>
-          <div class="card">
+          <div class="card" id="bus-map-card">
             <h2 class="sub-title" id="bus-map-title"></h2>
             <svg class="bus-map" id="bus-map" viewBox="-12 0 332 300" role="img"></svg>
             <p class="src" id="bus-map-note"></p>

@@ -7,15 +7,19 @@
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
+// - /api/drill                          訓練（M15）の状態と、今回の訓練の避難の案内の下書き
 // - それ以外の GET                       画面（public/）を返す
 // 書く（POST・JSONだけ・同じ画面からだけ）
 // - /api/drafts                         到着前案内をつくる {reservation_id}
 // - /api/drafts/:id                     確認済みにする {action:"ok"}／手で直す {action:"edit", draft_template}
 // - /api/drafts/:id/copy                コピー用の文（暗証番号・住所を入れる。保存しない）
 // - /api/guest-links                    宿のURLをつくる {reservation_id}（URLの鍵は1回だけ見せる。前のURLは止める）
+// - /api/drill                          訓練（M15）を始める・終える {action:"start"|"end"}
+//                                       始めると、泊まっている人ごとに避難の案内の下書きをつくる（送るボタンはない）
 // ゲスト画面（M12・宿のURL）。URLが使えない理由は、どれでも同じ「使えません」だけを返す
 // - GET  /g/:token                        ゲストの画面（public/guest.html）
 // - GET  /api/g/:token/bus?lang=&time=    バス（M13）：最寄りのバス停の次のバス・今日の最終・1日の本数（time はデモのときだけ）
+// - GET  /api/g/:token/drill?lang=        訓練（M15）のときの災害モード（決まった文と近い避難先2つ。AIは使わない）
 // - POST /api/g/:token/language           言語を覚える {language}
 // - POST /api/g/:token/profile            人数・国籍を入れる {language, adults, children, infants, nationalities}
 //                                         （台帳は書きかえない。違えば「ずれ」に入れ、オーナーがOKしたときだけ台帳に入る）
@@ -68,6 +72,7 @@ import {
   normLang,
   OWNER_CHECK,
 } from "./lib/arrival.js";
+import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
 import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -231,6 +236,7 @@ async function handleGet(url, env, today) {
       })),
     });
   }
+  if (p === "/api/drill") return json(await drillState(env, today));
   if (p === "/api/drafts") {
     const r = await loadReservation(env, url.searchParams.get("reservation_id"));
     const inn = await loadInn(env);
@@ -243,6 +249,8 @@ async function handleGet(url, env, today) {
 async function handlePost(request, url, env) {
   const p = url.pathname;
   const body = await readJsonBody(request, url);
+
+  if (p === "/api/drill") return handleDrillPost(body, env);
 
   if (p === "/api/drafts") {
     const r = await loadReservation(env, body.reservation_id);
@@ -553,6 +561,77 @@ async function handleMoneyGet(url, env) {
   return null;
 }
 
+// ---- 訓練（M15）----
+
+// 泊まっている人（チェックイン日 <= 今日 < チェックアウト日）。名前は読まない
+const STAYING_SQL = `SELECT id, language, checkin_date, checkout_date FROM reservations
+  WHERE status = 'confirmed' AND checkin_date <= ? AND checkout_date > ? ORDER BY checkin_date, id`;
+
+async function loadDrill(env) {
+  return env.DB.prepare("SELECT active, scenario, started_at, ended_at, draft_from_id FROM drill_state WHERE id = 1").first();
+}
+
+// オーナー画面（O-5）：訓練の状態と、今回の訓練の避難の案内
+async function drillState(env, today) {
+  const st = (await loadDrill(env)) ?? { active: 0, scenario: "tsunami_advisory", started_at: null, ended_at: null, draft_from_id: 0 };
+  const inn = await loadInn(env);
+  const staying = await env.DB.prepare(STAYING_SQL).bind(today, today).all();
+  const { results } = await env.DB.prepare(`${DRAFT_SELECT} WHERE kind = 'evacuation' AND id > ? ORDER BY id`)
+    .bind(st.draft_from_id ?? 0)
+    .all();
+  return {
+    active: Boolean(st.active),
+    scenario: st.scenario,
+    started_at: st.started_at,
+    ended_at: st.ended_at,
+    staying: staying.results.map((r) => ({ id: r.id, language: normLang(r.language), checkout_date: r.checkout_date })),
+    // 訓練をしていないときは、前の訓練の下書きを出さない
+    drafts: st.active ? results.map((row) => ownerDraftView(row, inn)) : [],
+  };
+}
+
+async function handleDrillPost(body, env) {
+  const today = todayJst(env.DEMO_TODAY);
+  const now = nowIso(env);
+  if (body.action === "end") {
+    await env.DB.prepare("UPDATE drill_state SET active = 0, ended_at = ? WHERE id = 1 AND active = 1").bind(now).run();
+    return json(await drillState(env, today));
+  }
+  if (body.action !== "start") throw new HttpError(400, "action は start か end です");
+  // 先に「訓練中」にする（ゲスト画面はすぐ災害モードになる）。2回押しても下書きは1回分だけ
+  const res = await env.DB.prepare(
+    `UPDATE drill_state SET active = 1, started_at = ?, ended_at = NULL,
+       draft_from_id = (SELECT COALESCE(MAX(id), 0) FROM guest_drafts) WHERE id = 1 AND active = 0`,
+  )
+    .bind(now)
+    .run();
+  if (!res.meta?.changes) return json(await drillState(env, today));
+  const client = aiClient(env);
+  const { results: staying } = await env.DB.prepare(STAYING_SQL).bind(today, today).all();
+  for (const r of staying) {
+    const d = await generateEvacuationDraft({ client, db: env.DB, r });
+    await env.DB.prepare(
+      `INSERT INTO guest_drafts (reservation_id, kind, language, draft_template, ja_text, back_translation,
+        checks_json, audit_json, source, status) VALUES (?, 'evacuation', ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+    )
+      .bind(r.id, d.language, d.draft_template, d.ja_text, d.back_translation, JSON.stringify(d.checks ?? []),
+        JSON.stringify(d.audit ?? null), d.source)
+      .run();
+  }
+  return json(await drillState(env, today), 201);
+}
+
+// ゲスト画面（G-5）：訓練中かどうか。訓練中なら決まった文と近い避難先2つ（プログラムだけ）
+async function handleGuestDrill(url, env, token) {
+  const found = await loadGuestLink(env, token);
+  if (!found) return guestGone();
+  const { link, r } = found;
+  const st = await loadDrill(env);
+  if (!st?.active) return json({ active: false }, 200, GUEST_HEADERS);
+  const lang = normLang(url.searchParams.get("lang") ?? link.language ?? r.language);
+  return json(guestDrillView(lang, st), 200, GUEST_HEADERS);
+}
+
 function aiClient(env) {
   try {
     return makeClient(env);
@@ -624,11 +703,12 @@ export default {
         if (request.method !== "GET") return json({ error: "この操作は受け付けていません" }, 405);
         return await serveAsset(request, env, "/guest");
       }
-      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|bus|language|profile|ask)$/);
+      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|bus|drill|language|profile|ask)$/);
       if (g) {
-        if (g[2] === "home" || g[2] === "bus") {
+        if (g[2] === "home" || g[2] === "bus" || g[2] === "drill") {
           if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
           if (g[2] === "bus") return await handleGuestBus(url, env, today, g[1]);
+          if (g[2] === "drill") return await handleGuestDrill(url, env, g[1]);
           return await handleGuest(url, env, today, g[1]);
         }
         if (request.method !== "POST") return json({ error: "この操作は受け付けていません" }, 405);
@@ -645,7 +725,7 @@ export default {
       } else if (request.method === "POST" && isMoneyPath(url.pathname)) {
         const res = await handleMoneyPost(request, url, env);
         if (res) return res;
-      } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links")) {
+      } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links" || url.pathname === "/api/drill")) {
         const res = await handlePost(request, url, env);
         if (res) return res;
       } else if (request.method === "POST" && url.pathname.startsWith("/api/booking-emails")) {

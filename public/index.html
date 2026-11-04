@@ -16,6 +16,11 @@
       <p class="brand">AI番頭</p>
       <h1 id="inn-name" class="inn">読み込み中</h1>
       <p class="today">デモの今日：<span id="today">—</span></p>
+      <button type="button" class="btn drill-btn" id="drill-btn" aria-pressed="false">訓練：津波注意報</button>
+    </div>
+    <div class="drill-banner" id="drill-banner" role="status" hidden>
+      <p class="drill-label">訓練中</p>
+      <p>公式の警報・避難指示の代わりではありません。ゲストの画面は、いま災害モード（訓練）です</p>
     </div>
     <ul class="team" id="team" aria-label="チーム">
       <li data-role="banto">番頭</li>
@@ -29,6 +34,8 @@
 
   <main>
     <a class="back" id="back" href="#" hidden>← ホームへ戻る</a>
+
+    <section id="drill-panel" class="drill-panel" aria-label="訓練：避難の案内" hidden></section>
 
     <section id="panel-home" class="panel" aria-labelledby="home-title">
       <h2 class="h2" id="home-title">きょうの仕事をえらぶ</h2>

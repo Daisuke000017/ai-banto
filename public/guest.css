@@ -276,3 +276,26 @@ select.bad { border-color: var(--danger); }
 .ask-taxi { margin: 0; padding: 10px 12px; border-radius: var(--r); background: var(--bg); font-weight: 700; }
 
 .foot { margin: 24px 0 0; font-size: 15px; color: var(--ink-sub); text-align: center; }
+
+/* 災害モード（M15・G-5）：訓練中はホームのいちばん上に赤い帯 */
+.drill-band {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 3px solid var(--danger);
+  border-radius: var(--r);
+  background: var(--danger-bg);
+}
+.drill-band p { margin: 0; }
+.drill-band-label { font-size: 24px; font-weight: 700; color: var(--danger); }
+.drill-band-note { font-weight: 700; color: var(--danger); }
+.drill-lines { margin: 0; padding-left: 1.4em; display: grid; gap: 8px; font-size: 20px; font-weight: 700; }
+.drill-shelters { margin: 0; padding-left: 1.6em; display: grid; gap: 12px; }
+.drill-shelters li { padding: 12px; background: var(--surface); border-radius: var(--r); }
+.drill-shelter-name { font-size: 20px; font-weight: 700; }
+.drill-band a { color: var(--danger); font-weight: 700; overflow-wrap: anywhere; }
+.drill-band a:focus-visible { outline: 3px solid var(--danger); outline-offset: 2px; }
+.drill-map { border: 2px solid var(--danger); }
+.map-ray { fill: none; stroke: var(--danger); stroke-width: 3; stroke-dasharray: 6 6; stroke-linecap: round; }
+.map-shelter { fill: var(--danger); stroke: var(--surface); stroke-width: 3; }
+.map-shelter-no { fill: #fff; font-weight: 700; }

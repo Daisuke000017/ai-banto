@@ -388,7 +388,9 @@ function renderHome() {
   done.textContent = t.done;
   done.hidden = !state.justSaved;
   state.justSaved = false;
+  renderDrillBand();
   show("v-home");
+  startDrill();
 }
 
 for (const tile of document.querySelectorAll(".tile")) tile.addEventListener("click", () => openPanel(tile.dataset.open));
@@ -657,9 +659,7 @@ function renderBus(data) {
     dirs.append(card);
   }
 
-  drawMap(data, b);
-  $("bus-map-title").textContent = b.mapTitle;
-  $("bus-map-note").textContent = b.mapNote;
+  drawBusMap(data);
 
   // 乗り方（しるし＋短い文）
   $("bus-ride-title").textContent = b.rideTitle;
@@ -725,6 +725,143 @@ function drawMap(data, b) {
   svgText(m, 76, 78, b.count(seg.north), "map-label map-count", "end");
   svgText(m, 76, 180, b.count(seg.south_n), "map-label map-count", "end");
   svgText(m, 185, 133, b.count(seg.south_a), "map-label map-count", "middle");
+}
+
+// ---- 災害モード（M15・G-5）：オーナーが訓練を始めると、5秒以内にこの画面が切り替わる ----
+// 文・避難先・距離・リンクはすべてサーバーのプログラムが出す（AIの文は使わない）。ここは見せるだけ
+const drill = { data: null, sig: "", bandSig: "", timer: 0 };
+const drillNow = () => (drill.data && drill.data.language === state.lang ? drill.data : null);
+
+function startDrill() {
+  checkDrill();
+  if (!drill.timer) drill.timer = setInterval(checkDrill, 5000);
+}
+
+async function checkDrill() {
+  if (document.hidden) return;
+  let d;
+  try {
+    d = await getJson(`${api("drill")}?lang=${encodeURIComponent(state.lang)}`);
+  } catch (e) {
+    if (e?.gone) {
+      clearInterval(drill.timer);
+      return fail(e);
+    }
+    return; // 通信の失敗は、次の回にもう一度
+  }
+  const next = d.active ? d : null;
+  const sig = JSON.stringify(next);
+  if (sig === drill.sig) return;
+  drill.sig = sig;
+  drill.data = next;
+  renderDrillBand();
+  // バスのタブを開いているときは、地図も切り替える
+  if (!$("v-panel").hidden && !$("pn-bus").hidden && busCache[state.lang]) drawBusMap(busCache[state.lang]);
+}
+
+function link(text, url) {
+  const a = el("a", null, text);
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  return a;
+}
+
+/** ホームのいちばん上の赤い帯 */
+function renderDrillBand() {
+  const d = drillNow();
+  const box = $("drill-band");
+  const sig = d ? JSON.stringify(d) : "";
+  if (sig === drill.bandSig) return; // 同じ中身なら作り直さない（読み上げをくり返さない）
+  drill.bandSig = sig;
+  box.replaceChildren();
+  box.hidden = !d;
+  document.body.classList.toggle("drill", !!d);
+  if (!d) return;
+  box.append(el("p", "drill-band-label", d.label));
+  box.append(el("p", "drill-band-note", d.not_official));
+  const ul = el("ul", "drill-lines");
+  for (const line of d.lines) ul.append(el("li", null, line));
+  box.append(ul);
+  box.append(el("h2", "sub-title", d.shelters_title));
+  const ol = el("ol", "drill-shelters");
+  for (const s of d.shelters) {
+    const li = el("li");
+    li.append(el("p", "drill-shelter-name", s.name));
+    li.append(el("p", null, `${s.kind_label} · ${s.dist_text}`));
+    const p = el("p");
+    p.append(link(d.map_label, s.map_url));
+    li.append(p);
+    ol.append(li);
+  }
+  box.append(ol);
+  const hz = el("p");
+  hz.append(link(d.hazard_map.label, d.hazard_map.url));
+  box.append(hz);
+  const src = el("p", "src");
+  src.append(link(d.source.text, d.source.url));
+  box.append(src);
+}
+
+/** バスのタブの地図：ふだんは路線図、訓練中は避難先の地図 */
+function drawBusMap(data) {
+  const b = BT[state.lang];
+  const d = drillNow();
+  const m = $("bus-map");
+  $("bus-map-card").classList.toggle("drill-map", !!d);
+  m.hidden = false;
+  if (!d) {
+    drawMap(data, b);
+    $("bus-map-title").textContent = b.mapTitle;
+    $("bus-map-note").textContent = b.mapNote;
+    return;
+  }
+  $("bus-map-title").textContent = d.shelters_title;
+  $("bus-map-note").textContent = `${d.not_official} ${d.source.text}`;
+  try {
+    drawShelterMap(d, b);
+  } catch {
+    // 地図が描けないときは文字だけ
+    m.replaceChildren();
+    m.hidden = true;
+    const list = d.shelters.map((s, i) => `${i + 1}. ${s.name}${paren(s.dist_text)}`).join(" / ");
+    $("bus-map-note").textContent = `${list}　${d.not_official} ${d.source.text}`;
+  }
+}
+
+/** 宿と避難先の位置（上が北）。直線の距離。道のりではない */
+function drawShelterMap(d, b) {
+  const m = $("bus-map");
+  m.replaceChildren();
+  m.setAttribute("aria-label", d.shelters.map((s) => `${s.name} ${s.dist_text}`).join(", "));
+  const pts = [{ dx_m: 0, dy_m: 0 }, ...d.shelters];
+  if (!d.shelters.length || pts.some((p) => !Number.isFinite(p.dx_m) || !Number.isFinite(p.dy_m))) throw new Error("no points");
+  const xs = pts.map((p) => p.dx_m);
+  const ys = pts.map((p) => p.dy_m);
+  const spanX = Math.max(1, Math.max(...xs) - Math.min(...xs));
+  const spanY = Math.max(1, Math.max(...ys) - Math.min(...ys));
+  const k = Math.min(200 / spanX, 150 / spanY);
+  const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
+  const midY = (Math.max(...ys) + Math.min(...ys)) / 2;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const at = (p) => [clamp(160 + (p.dx_m - midX) * k, 40, 280), clamp(140 - (p.dy_m - midY) * k, 40, 240)];
+  const [ix, iy] = at(pts[0]);
+
+  // 北の向き
+  svg("path", { d: "M300 44V14M292 24l8-10 8 10", class: "map-walk" }, m);
+  svgText(m, 300, 62, "N", "map-label", "middle");
+
+  d.shelters.forEach((s, i) => {
+    const [x, y] = at(s);
+    svg("path", { d: `M${ix} ${iy}L${x} ${y}`, class: "map-ray" }, m);
+    svg("circle", { cx: x, cy: y, r: 13, class: "map-shelter" }, m);
+    svgText(m, x, y + 6, String(i + 1), "map-label map-shelter-no", "middle");
+    const lx = clamp(x, 60, 250);
+    svgText(m, lx, y + 36, s.name, "map-label map-strong", "middle");
+    svgText(m, lx, y + 56, `${s.distance_m} m`, "map-label map-walk-label", "middle");
+  });
+  svg("path", { d: `M${ix - 12} ${iy + 14}V${iy - 2}l12-10 12 10v16z`, class: "map-inn" }, m);
+  svgText(m, clamp(ix, 40, 280), iy + 38, b.inn, "map-label", "middle");
 }
 
 // 乗り方のしるし（後ろから乗る・ボタン・運賃表・運賃箱）
