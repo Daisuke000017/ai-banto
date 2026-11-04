@@ -143,6 +143,24 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .eval-card .num.is-minor dd { font-size: 22px; color: var(--ink-sub); }.cell-sub { display: block; font-size: 15px; }
 .cell-sub.danger { color: var(--danger); }
 .cell-label { display: none; }
+/* 清掃が必要な日（M18）：1日1行。入れ替えの日は --glow の左の太線と明るい地で目立たせ、言葉でも「入れ替え」と出す */
+.clean-list { list-style: none; padding: 0; display: grid; gap: var(--s3); margin: var(--s4) 0; }
+.clean-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--r); }
+.clean-list li.is-turnover { border-left-color: var(--glow); background: var(--glow-bg); }
+.clean-date { display: flex; align-items: baseline; gap: var(--s2); }
+.clean-date b { font-size: 20px; }
+.clean-date span { font-size: 16px; color: var(--ink-sub); }
+.clean-room, .clean-sub, .clean-turn { word-break: auto-phrase; text-wrap: pretty; }
+.clean-room { font-size: 17px; }
+.clean-room b { margin-right: var(--s2); }
+.clean-sub { font-size: 16px; color: var(--ink-sub); }
+.clean-turn { font-size: 17px; font-weight: 700; }
+.clean-turn .pill { margin-right: var(--s2); }
+.clean-body .notice { margin-top: var(--s2); }
+@media (min-width: 640px) {
+  .clean-list li { grid-template-columns: 11em minmax(0, 1fr); }
+  .clean-date { flex-direction: column; gap: 0; }
+}
 .sb-list { display: grid; gap: var(--s3); }
 .sb-list li { padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
 .sb-note { font-weight: 700; }

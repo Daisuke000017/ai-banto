@@ -25,6 +25,9 @@ export const innProfile = {
   cancel_fee_treatment: "penalty",
   tax_start_date: "2026-07-01",
   tax_rate: 200,
+  // 清掃できる時間（M18）：チェックアウト〜チェックイン
+  cleaning_checkout_time: "10:00",
+  cleaning_checkin_time: "15:00",
 };
 
 const g = (n) => `架空ゲスト${n}`;

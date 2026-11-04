@@ -7,6 +7,7 @@
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
+// - /api/cleaning                       清掃が必要な日（M18）：今日から3週間のチェックアウトの日と入れ替え（見るだけ）
 // - /api/drill                          訓練（M15）の状態と、今回の訓練の避難の案内の下書き
 // - /api/eval/results                   成績（M9）：自作の例題40件を、手元のスクリプトで流した結果（画面からは流さない）
 // - /api/team/runs?since=               チーム（O-3）：係ごとの働きぶり・差し戻し（入力・出力の中身は返さない）
@@ -49,6 +50,7 @@ import { monthOf, todayJst } from "./lib/dates.js";
 import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
+import { cleaningDays } from "./lib/cleaning.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
   confirmBookingEmail,
@@ -214,6 +216,14 @@ async function handleGet(url, env, today) {
     const period = url.searchParams.get("period") ?? reportPeriodOf(monthOf(today));
     const { results } = await env.DB.prepare(RES_SELECT).all();
     return json({ today, ...minpakuReport(results, period, today) });
+  }
+  if (p === "/api/cleaning") {
+    // 清掃が必要な日（M18）：今日から3週間。名前は読まない。AIは使わない
+    const inn = await loadInn(env);
+    const { results } = await env.DB.prepare(
+      "SELECT id, ota, room, checkin_date, checkout_date, status FROM reservations WHERE status = 'confirmed' ORDER BY checkout_date, id",
+    ).all();
+    return json(cleaningDays(results, today, inn));
   }
   if (p === "/api/reservations") {
     // これからの予約（今日より後に出発する・取り消していない）。名前は読まない

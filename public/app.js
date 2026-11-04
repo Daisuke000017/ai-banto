@@ -690,6 +690,67 @@ function reportCard(r) {
   return card;
 }
 
+// ---- 清掃が必要な日（M18）：見るだけ。プログラムが台帳から数える ----
+
+const ROOM = { A: "部屋A", B: "部屋B" };
+
+function daysFrom(today, iso) {
+  const t = (s) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
+  return Math.round((t(iso) - t(today)) / 86400000);
+}
+const whenText = (n) => (n === 0 ? "今日" : n === 1 ? "明日" : `あと${n}日`);
+
+async function showCleaning() {
+  const p = $("panel-cleaning");
+  p.replaceChildren(loading("プログラムが数えています"));
+  try {
+    p.replaceChildren(cleaningCard(await api("/api/cleaning")));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showCleaning));
+  }
+}
+
+function cleaningCard(d) {
+  const w = d.window;
+  const turnovers = d.items.filter((i) => i.turnover).length;
+  const card = el("article", { cls: "card" }, [
+    el("h2", { text: "清掃が必要な日（今日から3週間）" }),
+    el("p", { cls: "lead" }, [
+      `${jpDate(d.from)}〜${jpDate(d.to)}　`,
+      el("b", { text: `${d.items.length}件` }),
+      turnovers ? `（うち入れ替え ${turnovers}件）` : "",
+    ]),
+  ]);
+  if (!d.items.length) {
+    card.append(el("p", { cls: "state", text: "この3週間に清掃の日はありません" }));
+  } else {
+    card.append(
+      el(
+        "ul",
+        { cls: "clean-list" },
+        d.items.map((i) => {
+          const n = daysFrom(d.today, i.date);
+          return el("li", { cls: i.turnover ? "is-turnover" : "" }, [
+            el("div", { cls: "clean-date" }, [el("b", { text: jpDate(i.date) }), el("span", { text: whenText(n) })]),
+            el("div", { cls: "clean-body" }, [
+              el("p", { cls: "clean-room" }, [el("b", { text: ROOM[i.room] ?? "部屋が決まっていません" }), `${OTA[i.ota] ?? i.ota ?? ""}のお客様がチェックアウト`]),
+              i.turnover
+                ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `チェックアウト〜チェックインの間（${w.checkout}〜${w.checkin}）に清掃`])
+                : el("p", { cls: "clean-sub", text: `${w.checkout}以降に清掃（この日、同じ部屋のチェックインはありません）` }),
+              i.check_room ? el("p", { cls: "notice warn", text: "同じ日にチェックインがあります。部屋を確かめてください" }) : null,
+            ]),
+          ]);
+        }),
+      ),
+    );
+  }
+  card.append(
+    el("details", {}, [el("summary", { text: "数え方" }), el("p", { cls: "notice info", text: d.how })]),
+    el("p", { cls: "notice info", text: `清掃できる時間は ${w.checkout}〜${w.checkin}（宿の設定）。この画面は見るだけです。清掃の担当を決める・知らせることはしません` }),
+  );
+  return card;
+}
+
 // ---- ゲスト連絡 ----
 
 async function showGuest() {
@@ -1927,8 +1988,8 @@ function evalExamples(d) {
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
-const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
+const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
+const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -1967,6 +2028,9 @@ async function loadFacts() {
     ),
     api("/api/minpaku/counter").then((d) =>
       set("fact-minpaku", d.remaining_days > 0 ? [`${d.limit}日のうち 残り`, el("b", { text: `${d.remaining_days}日` }), miniBar(d)] : [`${d.limit}日の上限に`, el("b", { text: "達しています" }), miniBar(d)]),
+    ),
+    api("/api/cleaning").then((d) =>
+      set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), `　3週間で${new Set(d.items.map((i) => i.date)).size}日`] : ["3週間、清掃の日はありません"]),
     ),
   ]);
 }
