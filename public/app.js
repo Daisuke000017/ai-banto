@@ -1891,20 +1891,22 @@ function evalTable(d) {
   );
   return el("article", { cls: "card" }, [
     el("h3", { cls: "card-title", text: "分野ごとの正解" }),
-    el("p", { cls: "lead", text: "手引き（Skill）や監査役を外すと、どこで間違いが増えるかを比べます" }),
+    el("p", { cls: "lead", text: "手引きや監査役を外すと、どこで間違いが増えるかを比べます" }),
     el("div", { cls: "table-wrap" }, [el("table", { cls: "eval-domains" }, [el("thead", {}, [head]), el("tbody", {}, rows)])]),
   ]);
 }
 
 // 監査役が差し戻した例（例題のメモと理由だけ）
+// 見出しは「メモ ― 分野」。分野名の後ろのかっこ（「（宿泊税・180日）」など）は落として、かっこが二重にならないようにする
 function evalExamples(d) {
+  const domainName = (key) => (d.domains.find((m) => m.domain === key)?.label ?? key).replace(/（[^）]*）$/, "");
   const body = d.examples.length
     ? el(
         "ul",
         { cls: "sb-list" },
         d.examples.map((x) =>
           el("li", {}, [
-            el("p", { cls: "sb-note", text: `${x.note}（${d.domains.find((m) => m.domain === x.domain)?.label ?? x.domain}）` }),
+            el("p", { cls: "sb-note", text: `${x.note} ― ${domainName(x.domain)}` }),
             el("p", { cls: "run-reason" }, [el("span", { cls: "role-pill", text: "監査役" }), el("span", { text: x.reason })]),
             el("span", { cls: `pill ${x.fixed ? "ok" : "warn"}`, text: x.fixed ? "直して正解" : "人の確認へ" }),
           ]),
