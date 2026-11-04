@@ -126,7 +126,8 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .eval-grid .card { margin: 0; }
 .eval-card.is-main { border-top: 4px solid var(--glow); }
 .eval-headline { margin-top: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r); border-left: 4px solid var(--glow); background: var(--glow-bg); }
-.eval-headline-main { font-size: 18px; font-weight: 700; line-height: 1.7; color: var(--ink); word-break: auto-phrase; text-wrap: pretty; }
+/* 結論の1文は「、」と数字の前の空白でだけ折る（auto-phrase だと「間／違い」で折れた）。入りきらないときだけ最後の手段で折る */
+.eval-headline-main { font-size: 18px; font-weight: 700; line-height: 1.7; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .eval-headline-sub { font-size: 16px; line-height: 1.7; color: var(--ink-sub); margin-top: var(--s1); word-break: auto-phrase; text-wrap: pretty; }
 .eval-card .nums { grid-template-columns: 1fr 1fr; }
 /* 見出しは言葉の途中で折らない。折れてよい所は app.js 側で「幅のない空白」を入れてある。入りきらないときだけ最後の手段で折る */
@@ -482,7 +483,8 @@ textarea {
 /* 下の注意書き（いつも出す3行） */
 .notes { max-width: 960px; margin: 0 auto; padding: var(--s3) var(--s4) var(--s5); }
 .notes ul { display: grid; gap: var(--s1); border-top: 1px solid var(--line); padding-top: var(--s3); }
-.notes li { font-size: 15px; color: var(--ink-sub); line-height: 1.7; padding-left: 1em; text-indent: -1em; }
+/* 行末に1〜2文字だけ残らないよう、言葉の途中では折らない。折れてよい所は index.html の <wbr> と句読点。入りきらないときだけ最後の手段で折る */
+.notes li { font-size: 15px; color: var(--ink-sub); line-height: 1.7; padding-left: 1em; text-indent: -1em; word-break: keep-all; overflow-wrap: anywhere; }
 .notes li::before { content: "・"; }
 
 .toast {
