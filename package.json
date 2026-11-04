@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test",
     "seed:build": "node scripts/build-seed.js",
-    "db:reset": "npm run seed:build && npx -y wrangler@4 d1 migrations apply ai-banto --local && npx -y wrangler@4 d1 execute ai-banto --local --file seed/demo.sql",
+    "db:reset": "npm run seed:build && npx -y wrangler@4 d1 migrations apply ai-banto --local && npx -y wrangler@4 d1 execute ai-banto --local --file seed/demo.sql && npx -y wrangler@4 d1 execute ai-banto --local --file seed/eval-results.sql",
     "dev": "npx -y wrangler@4 dev --local"
   },
   "dependencies": {
