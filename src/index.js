@@ -19,6 +19,7 @@
 // - POST /api/g/:token/language           言語を覚える {language}
 // - POST /api/g/:token/profile            人数・国籍を入れる {language, adults, children, infants, nationalities}
 //                                         （台帳は書きかえない。違えば「ずれ」に入れ、オーナーがOKしたときだけ台帳に入る）
+// - POST /api/g/:token/ask?time=          行って戻れるか（M14）{lang, dest | text, back_by?}（AIの質問は1つのURLにつき1日10回まで）
 // 予約メール（M17・貼り付け版）
 // - GET  /api/booking-emails?status=pending|done   確認待ち／決めたもの（伏せた本文だけ）
 // - GET  /api/booking-emails/samples                デモ用の見本メール
@@ -40,6 +41,7 @@
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
 import { busBoard, parseClock } from "./lib/bus.js";
+import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
@@ -451,6 +453,44 @@ async function handleGuestBus(url, env, today, token) {
   return json(busBoard({ date: today, minutes, lang }), 200, GUEST_HEADERS);
 }
 
+// ゲスト画面：行って戻れるか（M14）。時刻はプログラムが選び、AIは行き先の読み取りと説明の文だけ
+async function handleGuestAsk(request, url, env, today, token) {
+  const body = await readJsonBody(request, url);
+  const found = await loadGuestLink(env, token);
+  if (!found) return guestGone();
+  const { link, r } = found;
+  const lang = normLang(body.lang ?? link.language ?? r.language);
+  const dest = typeof body.dest === "string" ? body.dest : null;
+  const text = typeof body.text === "string" ? body.text.trim() : null;
+  if ((dest == null) === (text == null || text === "")) throw new HttpError(400, "行き先か質問のどちらか1つを送ってください");
+  if (dest != null && !BUTTON_DESTS.includes(dest)) throw new HttpError(400, "dest");
+  if (text && [...text].length > ASK_MAX_CHARS) throw new HttpError(400, `質問は${ASK_MAX_CHARS}文字までです`);
+  let backBy = null;
+  if (body.back_by != null && body.back_by !== "") {
+    backBy = parseClock(String(body.back_by));
+    if (backBy == null) throw new HttpError(400, "back_by");
+  }
+  const clock = new Date(Date.now() + 9 * 3600 * 1000);
+  let minutes = clock.getUTCHours() * 60 + clock.getUTCMinutes();
+  if (env.DEMO_TODAY) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
+  const taxi = parseJsonObject((await loadInn(env)).taxi_info_json);
+  const res = await answerAsk({
+    db: env.DB,
+    client: aiClient(env),
+    linkId: link.id,
+    lang,
+    dest,
+    text: dest == null ? text : null,
+    backBy,
+    date: today,
+    minutes,
+    countDay: todayJst(), // 回数は本当の日本時間の日付で数える（デモの日付ではない）
+    now: new Date().toISOString(),
+    taxiName: typeof taxi.name === "string" ? taxi.name : null,
+  });
+  return json(res, 200, GUEST_HEADERS);
+}
+
 // 予約メール（M17）：読む
 async function handleBookingEmailGet(url, env) {
   if (url.pathname === "/api/booking-emails/samples") {
@@ -584,7 +624,7 @@ export default {
         if (request.method !== "GET") return json({ error: "この操作は受け付けていません" }, 405);
         return await serveAsset(request, env, "/guest");
       }
-      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|bus|language|profile)$/);
+      const g = url.pathname.match(/^\/api\/g\/([^/]+)\/(home|bus|language|profile|ask)$/);
       if (g) {
         if (g[2] === "home" || g[2] === "bus") {
           if (request.method !== "GET") return json({ error: "読むだけの画面です" }, 405);
@@ -592,6 +632,7 @@ export default {
           return await handleGuest(url, env, today, g[1]);
         }
         if (request.method !== "POST") return json({ error: "この操作は受け付けていません" }, 405);
+        if (g[2] === "ask") return await handleGuestAsk(request, url, env, today, g[1]);
         return await handleGuestPost(request, url, env, g[1], g[2]);
       }
       if (request.method === "GET" && !url.pathname.startsWith("/api/")) return await serveAsset(request, env);

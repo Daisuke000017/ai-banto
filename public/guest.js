@@ -397,10 +397,13 @@ $("h-lang").addEventListener("click", () => renderLang());
 
 function openPanel(which) {
   const t = T[state.lang];
+  state.panel = which;
   $("panel-back").textContent = t.back;
-  $("pn-title").textContent = t[which];
-  for (const p of ["arrival", "bus", "sos"]) $(`pn-${p}`).hidden = p !== which;
-  if (which === "arrival") {
+  $("pn-title").textContent = which === "ask" ? AT[state.lang].title : t[which];
+  for (const p of ["arrival", "bus", "ask", "sos"]) $(`pn-${p}`).hidden = p !== which;
+  if (which === "ask") {
+    openAsk();
+  } else if (which === "arrival") {
     $("pn-text").textContent = state.data.text;
     $("pn-src").textContent = t.checked;
     $("pn-src").hidden = state.data.source !== "owner_checked";
@@ -413,7 +416,8 @@ function openPanel(which) {
   }
   show("v-panel");
 }
-$("panel-back").addEventListener("click", () => renderHome());
+// 「行って戻れるか」から戻るときはバスのタブへ
+$("panel-back").addEventListener("click", () => (state.panel === "ask" ? openPanel("bus") : renderHome()));
 
 // ---- バスのタブ（M13）：時刻はサーバーのプログラムが出す。ここは見せるだけ ----
 const BT = {
@@ -577,6 +581,7 @@ async function openBus() {
   $("bus-tel-label").textContent = b.tel;
   $("bus-live").textContent = b.live;
   $("bus-src").textContent = b.src("");
+  $("bus-ask-label").textContent = AT[state.lang].entry;
   $("bus-body").hidden = true;
   $("bus-state").hidden = false;
   $("bus-state").textContent = b.loading;
@@ -734,6 +739,275 @@ function rideIcon(i) {
   for (const d of paths) svg("path", { d }, s);
   return s;
 }
+
+// ---- 行って戻れるか（M14）：1問1答。時刻はサーバーのプログラムが出す。ここは見せるだけ ----
+const AT = {
+  ja: {
+    title: "行って戻れるか",
+    entry: "行って戻れるか聞く",
+    lead: "行き先を選ぶか、質問を書いてください。バスの時刻は、プログラムが時刻表から出します。",
+    backLabel: "戻りたい時刻（なくてもOK）",
+    destTitle: "行き先を選ぶ",
+    dests: { udo: "鵜戸神宮", aoshima_shrine: "青島神社", miyazaki_st: "宮崎駅" },
+    textLabel: "または、質問を書く（200文字まで）",
+    placeholder: "例：鵜戸神宮に行って、17時までに戻れますか",
+    send: "質問を送る",
+    sending: "調べています",
+    empty: "質問を書いてください。",
+    error: "答えを出せませんでした。もう一度押してください。",
+    safety: "病気・けが・事故・道に迷ったときは、ここではなく119番か宿のオーナーへ。",
+    left: (n) => `自由な質問は、今日あと${n}回できます。`,
+    judge: { ok: "行って戻れます", tight: "ぎりぎりです", ng: "むずかしいです", walk: "歩いて行けます", safety: "すぐに助けを呼んでください", limit: "今日の質問はここまでです", unknown: "分かりません" },
+    backBy: (t) => `${t}までに戻りたい`,
+    tomorrow: "明日のバスで調べました",
+    go: "行き", back: "帰り", last: "最終バス",
+    leaveInn: (t) => `宿を${t}に出る`,
+    home: (t) => `宿に${t}ごろ着く`,
+    lastArr: (t) => `${t}着`,
+    taxi: (n) => `タクシー：${n}（呼び方は宿のオーナーへ）`,
+    check: "時刻はデモ用です。必ず公式の時刻表で確認してください。",
+    src: "公式の時刻表（PDF）",
+    again: "別の質問をする",
+    s119: "火事・救急車",
+  },
+  en: {
+    title: "Can I go and come back?",
+    entry: "Ask: can I go and come back?",
+    lead: "Choose a place or write a question. Bus times come from the timetable, not from AI.",
+    backLabel: "Time you want to be back (optional)",
+    destTitle: "Choose a place",
+    dests: { udo: "Udo Jingu Shrine", aoshima_shrine: "Aoshima Shrine", miyazaki_st: "Miyazaki Station" },
+    textLabel: "Or write a question (up to 200 characters)",
+    placeholder: "e.g. Can I visit Udo Jingu and be back by 5 pm?",
+    send: "Send question",
+    sending: "Checking",
+    empty: "Please write a question.",
+    error: "Could not get an answer. Please press again.",
+    safety: "If someone is sick or hurt, there was an accident, or you are lost, call 119 or your host, not this page.",
+    left: (n) => `You can ask ${n} more written questions today.`,
+    judge: { ok: "Yes, you can", tight: "It is tight", ng: "Difficult", walk: "You can walk there", safety: "Please call for help now", limit: "No more questions today", unknown: "We don't know" },
+    backBy: (t) => `back by ${t}`,
+    tomorrow: "Checked with tomorrow's buses",
+    go: "Go", back: "Return", last: "Last bus",
+    leaveInn: (t) => `leave your stay at ${t}`,
+    home: (t) => `back at your stay around ${t}`,
+    lastArr: (t) => `arrives ${t}`,
+    taxi: (n) => `Taxi: ${n} (ask your host to call one)`,
+    check: "Demo times. Always check the official timetable.",
+    src: "Official timetable (PDF, Japanese)",
+    again: "Ask another question",
+    s119: "Fire / Ambulance",
+  },
+  ko: {
+    title: "다녀올 수 있을까요?",
+    entry: "다녀올 수 있는지 묻기",
+    lead: "목적지를 고르거나 질문을 써 주세요. 버스 시간은 프로그램이 시간표에서 꺼냅니다.",
+    backLabel: "돌아오고 싶은 시간 (없어도 됩니다)",
+    destTitle: "목적지 고르기",
+    dests: { udo: "우도 신궁", aoshima_shrine: "아오시마 신사", miyazaki_st: "미야자키역" },
+    textLabel: "또는 질문 쓰기 (200자까지)",
+    placeholder: "예: 우도 신궁에 갔다가 17시까지 돌아올 수 있나요?",
+    send: "질문 보내기",
+    sending: "확인하는 중",
+    empty: "질문을 써 주세요.",
+    error: "답을 내지 못했습니다. 다시 눌러 주세요.",
+    safety: "아프거나 다쳤을 때, 사고가 났을 때, 길을 잃었을 때는 여기가 아니라 119 또는 숙소 호스트에게 연락하세요.",
+    left: (n) => `오늘 직접 쓴 질문은 ${n}번 더 할 수 있습니다.`,
+    judge: { ok: "다녀올 수 있습니다", tight: "빠듯합니다", ng: "어렵습니다", walk: "걸어서 갈 수 있습니다", safety: "바로 도움을 요청하세요", limit: "오늘 질문은 여기까지입니다", unknown: "모르겠습니다" },
+    backBy: (t) => `${t}까지 돌아오고 싶음`,
+    tomorrow: "내일 버스로 확인했습니다",
+    go: "가는 길", back: "오는 길", last: "막차",
+    leaveInn: (t) => `숙소에서 ${t} 출발`,
+    home: (t) => `숙소에 ${t}쯤 도착`,
+    lastArr: (t) => `${t} 도착`,
+    taxi: (n) => `택시: ${n} (호출은 숙소 호스트에게)`,
+    check: "데모용 시간입니다. 반드시 공식 시간표를 확인해 주세요.",
+    src: "공식 시간표 (PDF, 일본어)",
+    again: "다른 질문하기",
+    s119: "화재·구급차",
+  },
+  "zh-TW": {
+    title: "去得了、回得來嗎",
+    entry: "問問看：去得了、回得來嗎",
+    lead: "請選擇目的地，或寫下問題。公車時刻由程式從時刻表取出。",
+    backLabel: "希望回來的時間（可不填）",
+    destTitle: "選擇目的地",
+    dests: { udo: "鵜戶神宮", aoshima_shrine: "青島神社", miyazaki_st: "宮崎站" },
+    textLabel: "或寫下問題（200字以內）",
+    placeholder: "例：去鵜戶神宮，17點前回得來嗎？",
+    send: "送出問題",
+    sending: "查詢中",
+    empty: "請寫下問題。",
+    error: "無法取得答案。請再按一次。",
+    safety: "生病、受傷、發生事故或迷路時，請打119或聯絡屋主，不要使用此頁面。",
+    left: (n) => `今天還可以自由提問${n}次。`,
+    judge: { ok: "去得了、回得來", tight: "時間很緊", ng: "有困難", walk: "可以步行前往", safety: "請立即求助", limit: "今天的提問已達上限", unknown: "不知道" },
+    backBy: (t) => `希望${t}前回來`,
+    tomorrow: "以明天的班次查詢",
+    go: "去程", back: "回程", last: "末班車",
+    leaveInn: (t) => `${t}從住宿出發`,
+    home: (t) => `約${t}回到住宿`,
+    lastArr: (t) => `${t}抵達`,
+    taxi: (n) => `計程車：${n}（請屋主幫忙叫車）`,
+    check: "示範用時刻。請務必確認官方時刻表。",
+    src: "官方時刻表（PDF，日文）",
+    again: "問別的問題",
+    s119: "火災・救護車",
+  },
+};
+const ASK_DESTS = ["udo", "aoshima_shrine", "miyazaki_st"];
+const ASK_MAX = 200;
+const JUDGE_ICON = { ok: "✅", walk: "✅", tight: "⚠️", ng: "❌", safety: "🚑", limit: "ℹ️", unknown: "ℹ️" };
+const JUDGE_CLASS = { ok: "ask-ok", walk: "ask-ok", tight: "ask-tight", ng: "ask-ng", safety: "ask-ng" };
+
+const charCount = (s) => [...s].length;
+
+function openAsk() {
+  const a = AT[state.lang];
+  $("ask-lead").textContent = a.lead;
+  $("ask-back-label").textContent = a.backLabel;
+  $("ask-dest-title").textContent = a.destTitle;
+  $("ask-text-label").textContent = a.textLabel;
+  $("ask-text").placeholder = a.placeholder;
+  $("ask-send").textContent = a.send;
+  $("ask-safety").textContent = a.safety;
+  const box = $("ask-dests");
+  box.replaceChildren();
+  for (const id of ASK_DESTS) {
+    const b = el("button", "btn ask-dest", a.dests[id]);
+    b.type = "button";
+    b.addEventListener("click", () => sendAsk({ dest: id }));
+    box.append(b);
+  }
+  showAskLeft($("ask-left-top"));
+  updateCount();
+  $("ask-msg").hidden = true;
+  $("ask-input").hidden = false;
+  $("ask-result").hidden = true;
+}
+
+function showAskLeft(p) {
+  p.hidden = state.askLeft == null;
+  if (state.askLeft != null) p.textContent = AT[state.lang].left(state.askLeft);
+}
+
+function updateCount() {
+  $("ask-count").textContent = `${charCount($("ask-text").value)} / ${ASK_MAX}`;
+}
+$("ask-text").addEventListener("input", updateCount);
+
+function setAskBusy(busy) {
+  for (const b of document.querySelectorAll("#ask-input button")) b.disabled = busy;
+  $("ask-send").textContent = busy ? AT[state.lang].sending : AT[state.lang].send;
+}
+
+$("ask-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = $("ask-text").value.trim();
+  if (!text) {
+    $("ask-msg").textContent = AT[state.lang].empty;
+    $("ask-msg").hidden = false;
+    $("ask-text").focus();
+    return;
+  }
+  sendAsk({ text });
+});
+
+async function sendAsk(q) {
+  const a = AT[state.lang];
+  $("ask-msg").hidden = true;
+  const body = { lang: state.lang, ...q };
+  const back = $("ask-back").value;
+  if (back) body.back_by = back;
+  const qs = new URLSearchParams();
+  const t = new URLSearchParams(location.search).get("time"); // デモで時刻を決めて見せるとき
+  if (t) qs.set("time", t);
+  setAskBusy(true);
+  let res;
+  try {
+    res = await getJson(`${api("ask")}${t ? `?${qs}` : ""}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    setAskBusy(false);
+    if (e?.gone) return fail(e);
+    $("ask-msg").textContent = a.error;
+    $("ask-msg").hidden = false;
+    return;
+  }
+  setAskBusy(false);
+  if (typeof res.remaining === "number") state.askLeft = res.remaining;
+  renderAnswer(res, q);
+}
+
+function renderAnswer(res, q) {
+  const a = AT[state.lang];
+  const j = res.judgment;
+  const card = $("ask-card");
+  card.className = `card ask-card ${JUDGE_CLASS[j] ?? "ask-info"}`;
+  $("ask-judge").textContent = `${JUDGE_ICON[j] ?? "ℹ️"} ${a.judge[j] ?? a.judge.unknown}`;
+
+  // 何を聞いたか（行き先・戻りたい時刻。自由な文はそのまま出さない）
+  const parts = [];
+  const destName = res.dest?.name ?? (q.dest ? a.dests[q.dest] : null);
+  if (destName) parts.push(destName);
+  if (res.back_by) parts.push(a.backBy(res.back_by));
+  if (res.plan && res.now == null) parts.push(a.tomorrow);
+  $("ask-q").textContent = parts.join(" · ");
+  $("ask-q").hidden = parts.length === 0;
+
+  $("ask-answer").textContent = res.text ?? "";
+
+  // 時刻（プログラムが出したもの）
+  const plan = $("ask-plan");
+  plan.replaceChildren();
+  const p = res.plan;
+  if (p?.go) plan.append(planRow(a.go, `${p.go.dep} → ${p.go.arr}`, a.leaveInn(p.go.leave_inn)));
+  if (p?.back) plan.append(planRow(a.back, `${p.back.dep} → ${p.back.arr}`, a.home(p.back.home)));
+  if (p?.last) plan.append(planRow(a.last, p.last.dep, a.lastArr(p.last.arr)));
+  plan.hidden = plan.childElementCount === 0;
+
+  // タクシーは ng のときだけ、名前だけ（電話番号は出さない）
+  const taxi = $("ask-taxi");
+  taxi.hidden = !(j === "ng" && res.taxi?.name);
+  if (!taxi.hidden) taxi.textContent = a.taxi(res.taxi.name);
+
+  // 安全の質問：119 の電話
+  $("ask-119").hidden = j !== "safety";
+  $("ask-119-label").textContent = a.s119;
+
+  $("ask-check").textContent = a.check;
+  const src = $("ask-src");
+  src.textContent = a.src;
+  src.href = res.timetable?.url ?? $("bus-src").href;
+  showAskLeft($("ask-left"));
+  $("ask-again").textContent = a.again;
+
+  $("ask-input").hidden = true;
+  $("ask-result").hidden = false;
+  window.scrollTo(0, 0);
+  $("ask-judge").focus?.();
+}
+
+function planRow(label, times, sub) {
+  const li = el("li");
+  li.append(el("span", "ask-plan-label", label));
+  const right = el("span", "ask-plan-body");
+  right.append(el("span", "bus-time-s", times));
+  right.append(el("span", "ask-plan-sub", sub));
+  li.append(right);
+  return li;
+}
+
+$("bus-ask").addEventListener("click", () => openPanel("ask"));
+// 会話の履歴は残さない：入れた文はここで消す
+$("ask-again").addEventListener("click", () => {
+  $("ask-text").value = "";
+  openAsk();
+  window.scrollTo(0, 0);
+});
 
 $("retry").addEventListener("click", () => load());
 

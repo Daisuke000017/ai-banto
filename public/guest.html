@@ -117,6 +117,11 @@
           </div>
           <p class="bus-today" id="bus-today"></p>
           <div class="bus-dirs" id="bus-dirs"></div>
+          <!-- M14：行って戻れるか への入り口 -->
+          <button type="button" class="btn ask-entry" id="bus-ask">
+            <svg class="ask-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 34h20"/><path d="M22 28l6 6-6 6"/><path d="M40 14H20"/><path d="M26 8l-6 6 6 6"/></svg>
+            <span id="bus-ask-label"></span>
+          </button>
           <div class="card">
             <h2 class="sub-title" id="bus-map-title"></h2>
             <svg class="bus-map" id="bus-map" viewBox="-12 0 332 300" role="img"></svg>
@@ -135,6 +140,41 @@
         <a class="call call-info" id="bus-tel" href="tel:0570039385"><span class="num-s">0570-039-385</span><span id="bus-tel-label"></span></a>
         <a class="btn" id="bus-live" href="https://www.miyakoh.co.jp/rosen/busdoko/" target="_blank" rel="noopener noreferrer"></a>
         <p class="src"><a id="bus-src" href="https://www.miyakoh.co.jp/rosen/0_jikoku/2-09_20261001.pdf" target="_blank" rel="noopener noreferrer"></a></p>
+      </div>
+      <!-- G-4 行って戻れるか（M14）：1問1答。時刻はサーバーのプログラムが出す -->
+      <div id="pn-ask" class="panel" hidden>
+        <div id="ask-input" class="panel">
+          <p class="src" id="ask-lead"></p>
+          <div class="card">
+            <label class="ask-label" for="ask-back" id="ask-back-label"></label>
+            <input type="time" id="ask-back" class="ask-time" step="300">
+          </div>
+          <h2 class="sub-title" id="ask-dest-title"></h2>
+          <div class="ask-dests" id="ask-dests"></div>
+          <form class="card" id="ask-form">
+            <label class="ask-label" for="ask-text" id="ask-text-label"></label>
+            <textarea id="ask-text" rows="3" maxlength="200"></textarea>
+            <p class="ask-count" id="ask-count"></p>
+            <button type="submit" class="btn" id="ask-send"></button>
+          </form>
+          <p class="msg msg-danger" id="ask-msg" role="alert" hidden></p>
+          <p class="src" id="ask-safety"></p>
+          <p class="src" id="ask-left-top"></p>
+        </div>
+        <div id="ask-result" class="panel" hidden>
+          <div class="card ask-card" id="ask-card">
+            <p class="ask-judge" id="ask-judge" tabindex="-1"></p>
+            <p class="ask-q" id="ask-q"></p>
+            <p class="guide" id="ask-answer"></p>
+            <ul class="ask-plan" id="ask-plan"></ul>
+            <p class="ask-taxi" id="ask-taxi" hidden></p>
+          </div>
+          <a class="call" id="ask-119" href="tel:119" hidden><span class="num">119</span><span id="ask-119-label"></span></a>
+          <p class="msg msg-warn" id="ask-check"></p>
+          <p class="src"><a id="ask-src" target="_blank" rel="noopener noreferrer"></a></p>
+          <p class="src" id="ask-left"></p>
+          <button type="button" class="btn btn-main" id="ask-again"></button>
+        </div>
       </div>
       <div id="pn-sos" class="panel" hidden>
         <a class="call" href="tel:119"><span class="num">119</span><span id="sos-119"></span></a>

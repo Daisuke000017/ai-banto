@@ -66,7 +66,8 @@ body {
 a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .btn:disabled { opacity: .6; cursor: default; }
 .back { border-color: var(--line); color: var(--ink); text-align: left; }
-.btn:focus-visible, .back:focus-visible, .tile:focus-visible, .lang:focus-visible, select:focus-visible, .call:focus-visible {
+.btn:focus-visible, .back:focus-visible, .tile:focus-visible, .lang:focus-visible, select:focus-visible, .call:focus-visible,
+textarea:focus-visible, input:focus-visible, .src a:focus-visible {
   outline: 3px solid #F2B33D;
   outline-offset: 2px;
 }
@@ -235,5 +236,43 @@ select.bad { border-color: var(--danger); }
 .bus-all-head { margin: 12px 0 4px; font-size: 16px; color: var(--ink-sub); }
 .bus-all-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 .bus-all-list .passed { color: var(--ink-sub); text-decoration: line-through; }
+
+/* 行って戻れるか（M14） */
+.ask-entry { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ask-ico { width: 32px; height: 32px; flex: none; fill: none; stroke: var(--action); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ask-label { font-size: 16px; color: var(--ink-sub); }
+.ask-time, #ask-text {
+  font: inherit;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+  box-sizing: border-box;
+}
+#ask-text { resize: vertical; line-height: 1.6; }
+.ask-count { margin: 0; font-size: 15px; color: var(--ink-sub); text-align: right; font-variant-numeric: tabular-nums; }
+#ask-form, .ask-card { display: flex; flex-direction: column; gap: 10px; }
+.ask-dests { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.ask-judge { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.3; }
+.ask-judge:focus { outline: none; }
+.ask-q { margin: 0; color: var(--ink-sub); }
+.ask-card .guide { margin: 0; }
+.ask-card { border-left: 6px solid var(--line); }
+.ask-ok { border-left-color: var(--ok); }
+.ask-ok .ask-judge { color: var(--ok); }
+.ask-tight { border-left-color: var(--warn); }
+.ask-tight .ask-judge { color: var(--warn); }
+.ask-ng { border-left-color: var(--danger); }
+.ask-ng .ask-judge { color: var(--danger); }
+.ask-plan { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.ask-plan li { display: grid; grid-template-columns: 6em 1fr; gap: 8px; align-items: baseline; }
+.ask-plan-label { color: var(--ink-sub); font-size: 16px; }
+.ask-plan-body { display: flex; flex-direction: column; }
+.ask-plan-body .bus-time-s { font-size: 22px; }
+.ask-plan-sub { font-size: 15px; color: var(--ink-sub); }
+.ask-taxi { margin: 0; padding: 10px 12px; border-radius: var(--r); background: var(--bg); font-weight: 700; }
 
 .foot { margin: 24px 0 0; font-size: 15px; color: var(--ink-sub); text-align: center; }
