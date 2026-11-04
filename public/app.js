@@ -1733,6 +1733,13 @@ const EVAC_STEPS = [
   [["kansa"], "監査役とプログラムが、避難先と決まりに合っているか確かめています"],
 ];
 const drill = { active: false, busy: false };
+let view = "home";
+
+// 「チームの成績」では赤いボタンが見出しより先に目に入るので、訓練していないときは出さない。
+// 訓練中は「訓練を終える」が押せるよう、どの画面でも出す
+function syncDrillBtn() {
+  $("drill-btn").hidden = view === "eval" && !drill.active;
+}
 
 async function loadDrill() {
   try {
@@ -1750,6 +1757,7 @@ function renderDrill(d, working = null) {
   b.textContent = drill.active ? "訓練を終える" : "訓練：津波注意報";
   b.setAttribute("aria-pressed", String(drill.active));
   b.disabled = drill.busy;
+  syncDrillBtn();
   const p = $("drill-panel");
   p.hidden = !drill.active;
   if (!drill.active) {
@@ -1927,6 +1935,8 @@ function show(name) {
   $("panel-home").hidden = name !== "home";
   for (const k of Object.keys(SHOW)) $(`panel-${k}`).hidden = k !== name;
   $("back").hidden = name === "home";
+  view = name;
+  syncDrillBtn();
   document.title = name === "home" ? "AI番頭" : `${TITLE[name]}｜AI番頭`;
   window.scrollTo(0, 0);
   if (name === "home") {
