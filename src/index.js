@@ -2,6 +2,7 @@
 // 読むだけ（GET）
 // - /api/kpis?month=YYYY-MM             今月の数字（売上・手取り・稼働率など。泊まった日で数える）
 // - /api/tax?month=YYYY-MM              宿泊税の集計表（下書き）
+// - /api/tax/return?month=YYYY-MM       宿泊税の納入申告書（宮崎市 様式第10号）に書く中身と、画面だけの注意
 // - /api/minpaku/counter                180日カウンター
 // - /api/minpaku/report?period=         定期報告の4項目（例：2026-08_09）
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
@@ -61,6 +62,7 @@
 // - Secret「OWNER_PASSWORD_HASH」が無いときは、手元（localhost）だけ開く。それ以外からは 403
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, periodMonths, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
+import { taxReturn } from "./lib/tax-return.js";
 import { monthOf, todayJst } from "./lib/dates.js";
 import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
@@ -260,6 +262,21 @@ async function handleGet(url, env, today) {
     const rules = rulesFromInnProfile(await loadInn(env));
     const { results } = await env.DB.prepare(RES_SELECT).all();
     return json({ today, ...taxDraft(results, month, rules) });
+  }
+
+  if (p === "/api/tax/return") {
+    const month = url.searchParams.get("month") ?? monthOf(today);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
+    const inn = await loadInn(env);
+    const { results } = await env.DB.prepare(RES_SELECT).all();
+    const draft = taxDraft(results, month, rulesFromInnProfile(inn));
+    // この月の予約で、ゲスト連絡の下書きに「【オーナー確認】」が残っている数（宿泊税の預かり方が決まっていない）
+    const ids = new Set(draft.breakdown.map((b) => b.reservation_id));
+    const { results: checks } = await env.DB.prepare("SELECT reservation_id FROM guest_drafts WHERE status = 'draft' AND instr(draft_template, ?) > 0")
+      .bind(OWNER_CHECK)
+      .all();
+    const ownerChecks = (checks ?? []).filter((c) => ids.has(c.reservation_id)).length;
+    return json({ today, ...taxReturn(draft, inn, today, { ownerChecks }) });
   }
   if (p === "/api/minpaku/counter") {
     const rules = rulesFromInnProfile(await loadInn(env));
@@ -909,7 +926,11 @@ async function handleMoneyPost(request, url, env) {
 }
 
 // ---- 宿と部屋の設定（オーナーが画面で入れる）。AIは使わない ----
-const INN_FIELDS = ["name", "address", "notification_no", "cleaning_checkout_time", "cleaning_checkin_time", "cleaning_fee", "min_price"];
+const INN_FIELDS = [
+  "name", "address", "notification_no", "cleaning_checkout_time", "cleaning_checkin_time", "cleaning_fee", "min_price",
+  // 宿泊税の申告書に書くこと
+  "collector_address", "collector_name", "corporate_no", "inn_phone", "facility_no", "contact_name", "contact_phone",
+];
 
 async function settingsView(env, today) {
   const inn = await loadInn(env);

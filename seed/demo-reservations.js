@@ -31,6 +31,14 @@ export const innProfile = {
   // 値付けの助言（経営企画）：清掃費1回いくら・最低価格（これ以下では売らない）。架空の値
   cleaning_fee: 5000,
   min_price: 9000,
+  // 宿泊税の申告書（宮崎市 様式第10号）に書くこと。すべて架空。法人番号は本物と重ならないよう空（個人の宿として扱う）
+  collector_address: "宮崎県宮崎市青島（架空の住所）",
+  collector_name: "青島 しおさい（架空）",
+  corporate_no: null,
+  inn_phone: "0985-00-0000",
+  facility_no: "DEMO-001",
+  contact_name: "青島 しおさい（架空）",
+  contact_phone: "090-0000-0000",
   // 民泊の届出番号（定期報告のファイルに入る）。架空の番号（M＋数字9けたの形だけ合わせた）
   notification_no: "M000000000",
 };

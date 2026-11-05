@@ -1,4 +1,4 @@
-// 宿の設定（名前・住所・届出番号・清掃の時間・清掃費・最低価格）の入力を確かめる。AIは使わない
+// 宿の設定（名前・住所・届出番号・清掃の時間・清掃費・最低価格・宿泊税の申告書に書くこと）の入力を確かめる。AIは使わない
 // 送られてきた項目だけを確かめて、書きこむ値を返す。だめなら最初のまちがいの文を返す
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CTRL_RE = /[\u0000-\u001f\u007f]/g;
@@ -21,6 +21,18 @@ function yen(v, label) {
   const n = typeof v === "string" ? Number(v.replaceAll(",", "").trim()) : v;
   if (!Number.isInteger(n) || n < 0 || n > MAX_YEN) return { error: `${label}は0〜${MAX_YEN.toLocaleString("ja-JP")}円の整数で入れてください` };
   return { value: n };
+}
+
+// 全角の数字・ハイフンを半角にそろえる（電話番号・法人番号・施設番号）
+const half = (s) => s.replace(/[０-９Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[－ー―‐−]/g, "-");
+
+function phone(v, label) {
+  const r = text(v, label, 20);
+  if (!r.value) return r;
+  const t = half(r.value).replace(/\s/g, "");
+  const digits = t.replaceAll("-", "");
+  if (!/^[0-9-]+$/.test(t) || !/^0\d{9,10}$/.test(digits)) return { error: `${label}は「0985-00-0000」のように、0から始まる10〜11けたの数字で入れてください` };
+  return { value: t };
 }
 
 function time(v, label) {
@@ -47,6 +59,26 @@ export function checkInnPatch(body, current = {}) {
     ["cleaning_checkin_time", (v) => time(v, "チェックインの時刻")],
     ["cleaning_fee", (v) => yen(v, "清掃費")],
     ["min_price", (v) => yen(v, "最低価格")],
+    // 宿泊税の申告書（宮崎市 様式第10号）に書くこと。どれも任意
+    ["collector_address", (v) => text(v, "特別徴収義務者の住所", 100)],
+    ["collector_name", (v) => text(v, "特別徴収義務者の氏名（名称）", 60)],
+    ["corporate_no", (v) => {
+      const r = text(v, "法人番号", 20);
+      if (!r.value) return r;
+      const n = half(r.value).replace(/[\s-]/g, "");
+      if (!/^\d{13}$/.test(n)) return { error: "法人番号は13けたの数字で入れてください（個人の方は空のままで大丈夫です）" };
+      return { value: n };
+    }],
+    ["inn_phone", (v) => phone(v, "宿の電話番号")],
+    ["facility_no", (v) => {
+      const r = text(v, "施設番号", 20);
+      if (!r.value) return r;
+      const t = half(r.value);
+      if (!/^[0-9A-Za-z第号][0-9A-Za-z第号-]*$/.test(t)) return { error: "施設番号は英数字で入れてください" };
+      return { value: t };
+    }],
+    ["contact_name", (v) => text(v, "担当者", 30)],
+    ["contact_phone", (v) => phone(v, "担当者の電話番号")],
   ];
   for (const [key, check] of steps) {
     if (!(key in body)) continue;

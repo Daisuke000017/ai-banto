@@ -878,3 +878,63 @@ body.drill::after {
 .nat-row select { flex: 1 1 160px; }
 .nat-row .text-in { width: 5.5em; margin-top: 0; }
 #ledger-form { scroll-margin-top: var(--s4); }
+
+/* ---- 宿泊税の納入申告書（宮崎市 様式第10号）。画面では紙のように見せ、印刷ではこの紙だけを出す ---- */
+.set-sub { font-size: 18px; margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.tr-wrap { background: var(--bg); border-radius: var(--r); padding: var(--s3) 0; }
+.tr-sheet {
+  background: #fff; color: #111; max-width: 760px; margin: 0 auto;
+  padding: 40px 44px; border: 1px solid var(--line); box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  font-size: 14px; line-height: 1.6;
+}
+.tr-sheet p { margin: 0; }
+.tr-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1em; }
+.tr-date { margin-top: 1.2em !important; white-space: nowrap; }
+.tr-collector { margin: .6em 0 0 42%; }
+.tr-collector div { display: grid; grid-template-columns: 8.5em 1fr; gap: .5em; margin-top: .2em; }
+.tr-collector dd { margin: 0; min-height: 1.6em; border-bottom: 1px dotted #999; overflow-wrap: anywhere; }
+.tr-title { text-align: center; font-size: 1.15em; font-weight: 700; margin: 1.4em 0 1.2em; letter-spacing: .1em; }
+.tr-lead { font-size: .95em; margin-bottom: .3em !important; }
+.tr-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 1.1em; font-size: inherit; }
+.tr-table th, .tr-table td { border: 1px solid #222; padding: .45em .5em; vertical-align: middle; overflow-wrap: anywhere; }
+.tr-table th { background: #e6e6e6; color: #222; font-weight: 400; text-align: center; font-size: .92em; white-space: normal; }
+.tr-table th small { display: block; font-size: .82em; line-height: 1.3; }
+.tr-facility td { height: 2.3em; }
+.tr-facility .tr-none { border: 0; }
+.tr-tel { margin-left: 1em; white-space: nowrap; }
+.tr-amount .tr-period { text-align: center; font-size: .92em; }
+.tr-amount .tr-period strong { display: block; font-size: .92em; margin-top: .3em; }
+.tr-amount th { font-weight: 700; }
+.tr-amount td { height: 2.4em; }
+.tr-table .n { text-align: right; font-variant-numeric: tabular-nums; font-size: 1.05em; }
+.tr-table .tr-unit { text-align: center; font-size: .85em; background: #e6e6e6; }
+.tr-amount .tr-unit:nth-child(2) { background: #fff; }
+.tr-rate { text-align: center; white-space: nowrap; }
+.tr-nowrap { white-space: nowrap; }
+.tr-table .w7 { width: 7%; } .tr-table .w12 { width: 12%; } .tr-table .w14 { width: 14%; } .tr-table .w17 { width: 17%; }
+.tr-table .w19 { width: 19%; } .tr-table .w26 { width: 26%; } .tr-table .w32 { width: 32%; } .tr-table .w33 { width: 33%; }
+.tr-table .w36 { width: 36%; } .tr-table .w52 { width: 52%; }
+.tr-shade { background: #f0f0f0; }
+.tr-total { width: 55%; margin-left: auto; }
+.tr-notes { margin-top: 1.6em; font-size: .9em; }
+.tr-notes p + p { margin-top: .5em; padding-left: 1em; text-indent: -1em; }
+@media (max-width: 560px) {
+  .tr-wrap { padding: var(--s2) 0; }
+  .tr-sheet { font-size: 10px; padding: 18px 12px; }
+  .tr-collector { margin-left: 22%; }
+  .tr-table th, .tr-table td { padding: .35em .3em; }
+  .tr-total { width: 70%; }
+}
+
+@media print {
+  @page { size: A4; margin: 14mm 16mm; }
+  /* 申告書の画面を開いているときだけ、紙の部分だけを印刷する（ほかの画面の印刷は今まで通り） */
+  body:has(#panel-taxreturn:not([hidden])) { background: #fff !important; }
+  body:has(#panel-taxreturn:not([hidden])) :is(header.top, footer.notes, #back, #toast, #drill-panel, #drill-btn, .no-print) { display: none !important; }
+  body:has(#panel-taxreturn:not([hidden]))::after { display: none !important; }
+  body:has(#panel-taxreturn:not([hidden])) main { max-width: none; padding: 0; margin: 0; }
+  .tr-wrap { background: none; padding: 0; }
+  .tr-sheet { max-width: none; border: 0; box-shadow: none; padding: 0; font-size: 10.5pt; }
+  .tr-table th, .tr-table .tr-unit, .tr-shade { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .tr-table { break-inside: avoid; }
+}

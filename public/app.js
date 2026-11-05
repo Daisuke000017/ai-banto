@@ -622,19 +622,21 @@ async function showTax() {
   }
 }
 
-function taxMonthPicker(rules) {
+// 集計表と申告書で同じ月を使う（どちらかで変えたら、もう一方も次に開いたときその月になる）
+function taxMonthPicker(rules, { id = "tax-month", onChange = showTax } = {}) {
   const start = (rules.tax_start_date ?? "2026-07-01").slice(0, 7);
   const last = state.today.slice(0, 7);
-  const sel = el("select", { attrs: { id: "tax-month" } });
+  const sel = el("select", { attrs: { id } });
   for (let m = last; m >= start; m = addMonths(m, -1)) {
     sel.append(el("option", { text: jpMonth(m), attrs: { value: m, selected: m === state.taxMonth } }));
     if (m === start) break;
   }
   sel.addEventListener("change", () => {
     state.taxMonth = sel.value;
-    showTax();
+    state.loaded.tax = false;
+    onChange();
   });
-  return el("div", { cls: "pick" }, [el("label", { text: "月", attrs: { for: "tax-month" } }), sel]);
+  return el("div", { cls: "pick" }, [el("label", { text: "月", attrs: { for: id } }), sel]);
 }
 
 function taxCard(d) {
@@ -672,8 +674,139 @@ function taxCard(d) {
   const rows = [["予約", "予約サイト", "この月の泊数", "人泊", "宿泊税（円）", "預かった額（円）", "メモ"]];
   for (const b of d.breakdown) rows.push([b.reservation_id, OTA[b.ota] ?? b.ota, b.nights_in_month, b.person_nights, b.tax, b.collected ?? "分からない", b.note ?? ""]);
   rows.push(["合計", "", "", d.person_nights, d.tax_amount, d.collected_amount, d.unknown_tax ? `分からない分 ${d.unknown_tax}円` : ""]);
-  card.append(el("div", { cls: "btns" }, [btn("CSVをつくる", () => downloadCsv(`宿泊税_集計表_${d.month}.csv`, rows), "btn primary")]));
+  card.append(
+    el("div", { cls: "btns" }, [
+      btn("申告書をつくる（印刷・PDF）", () => go("taxreturn"), "btn primary"),
+      btn("CSVをつくる", () => downloadCsv(`宿泊税_集計表_${d.month}.csv`, rows), "btn"),
+    ]),
+  );
   return card;
+}
+
+// ---- 宿泊税の納入申告書（宮崎市 様式第10号）：印刷・PDFにする画面。AIは使わない ----
+// 数字は集計表と同じ（人泊×税率）。注意は画面だけに出し、印刷には出さない。申告書を出すのはオーナー本人
+
+async function showTaxReturn() {
+  const p = $("panel-taxreturn");
+  p.replaceChildren(loading("申告書をつくっています"));
+  try {
+    const d = await api(`/api/tax/return?month=${encodeURIComponent(state.taxMonth)}`);
+    p.replaceChildren(taxReturnTools(d), taxReturnSheet(d));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showTaxReturn));
+  }
+}
+
+function taxReturnTools(d) {
+  // danger（来ていない月・税率が様式とちがう）のときは印刷のボタンを止める
+  const blocked = d.warnings.some((w) => w.level === "danger");
+  const order = { danger: 0, warn: 1, info: 2 };
+  const notes = [...d.warnings].sort((a, b) => order[a.level] - order[b.level]).map((w) => el("p", { cls: `notice ${w.level}`, text: w.text }));
+  const buttons = [
+    blocked
+      ? el("button", { cls: "btn primary", text: "このままでは印刷できません", attrs: { type: "button", disabled: true } })
+      : btn("印刷する（PDFにもできます）", () => window.print(), "btn primary"),
+    btn("集計表に戻る", () => go("tax"), "btn"),
+  ];
+  if (d.missing.length) buttons.push(btn("設定で空いている欄を入れる", () => go("settings"), "btn"));
+  return el("article", { cls: "card no-print" }, [
+    el("div", { cls: "card-head" }, [
+      el("div", {}, [
+        el("h2", { text: `${jpMonth(d.month)}分の宿泊税納入申告書` }),
+        el("p", { cls: "lead", text: "宮崎市の様式第10号と同じ形です。印刷するか PDF にして、オーナーご本人が市に出してください（番頭は出しません）" }),
+      ]),
+      taxMonthPicker(d.rules, { id: "taxreturn-month", onChange: showTaxReturn }),
+    ]),
+    ...notes,
+    notes.length ? el("p", { cls: "sub", text: "上の注意は画面だけに出ます。印刷には出ません。日付は今日の日付です（出す日に合わせて手で直せます）" }) : null,
+    el("div", { cls: "btns" }, buttons),
+  ]);
+}
+
+// 市の様式と同じ並び。設定が空の欄は空けたまま（手で書けるように）
+function taxReturnSheet(d) {
+  const f = d.form;
+  const v = (x) => x ?? "";
+  const th = (text, opts = {}) => el("th", { text, attrs: { scope: opts.scope ?? null, colspan: opts.colspan ?? null, rowspan: opts.rowspan ?? null }, cls: opts.cls });
+  const td = (text, opts = {}) => el("td", { text, attrs: { colspan: opts.colspan ?? null, rowspan: opts.rowspan ?? null }, cls: opts.cls });
+  const head2 = (a, b) => el("th", { attrs: { colspan: "2" } }, [a, b ? el("small", { text: b }) : null]);
+
+  // 列の幅は市の様式に合わせる（表の幅に対する割合）
+  // 列の幅（%）。画面の決まり（CSP）で style 属性は使えないので、app.css の .w数字 で幅を付ける
+  const cols = (...w) => el("colgroup", {}, w.map((x) => el("col", { cls: `w${x}` })));
+  const facility = el("table", { cls: "tr-table tr-facility" }, [
+    cols(14, 14, 32, 14, 26),
+    el("tbody", {}, [
+      el("tr", {}, [th("宿泊施設", { rowspan: "4", cls: "tr-group", scope: "rowgroup" }), th("所在地", { scope: "row" }), td(v(f.facility.address), { colspan: "3" })]),
+      el("tr", {}, [th("名称", { scope: "row" }), td(v(f.facility.name), { colspan: "3" })]),
+      el("tr", {}, [th("電話番号", { scope: "row" }), td(v(f.facility.phone), { cls: "tr-nowrap" }), th("施設番号", { scope: "row" }), td(v(f.facility.facility_no), { cls: "tr-nowrap" })]),
+      el("tr", {}, [
+        th("担当者", { scope: "row" }),
+        el("td", { attrs: { colspan: "2" } }, [
+          el("span", { cls: "tr-contact", text: v(f.facility.contact_name) }),
+          el("span", { cls: "tr-tel", text: `（℡ ${v(f.facility.contact_phone)}${f.facility.contact_phone ? "" : "　　　　　"} ）` }),
+        ]),
+        el("td", { cls: "tr-none" }),
+      ]),
+    ]),
+  ]);
+
+  // 1行目にこの月を書く。2・3行目（特例）は空のまま
+  const amount = (filled) =>
+    el("table", { cls: "tr-table tr-amount" }, [
+      cols(19, 17, 7, 17, 33, 7),
+      el("tbody", {}, [
+        el("tr", {}, [
+          el("td", { cls: "tr-period", attrs: { rowspan: "2" } }, [
+            el("span", { text: filled ? `令和${f.period.era_year}年度　${f.period.month}月分` : "　　年度　　月分" }),
+            filled ? null : el("strong", { text: "※特例の場合のみ記入" }),
+          ]),
+          head2("宿泊数　①", filled ? "（１人１泊につき２００円）" : ""),
+          th("税率　②"),
+          head2("納入すべき税額", "①×②"),
+        ]),
+        el("tr", {}, [
+          td(filled ? yen(f.nights) : "", { cls: "n" }),
+          td("泊", { cls: "tr-unit" }),
+          td("２００円", { cls: "tr-rate" }),
+          td(filled ? yen(f.tax) : "", { cls: "n tr-shade" }),
+          td("円", { cls: "tr-unit" }),
+        ]),
+      ]),
+    ]);
+
+  const total = el("table", { cls: "tr-table tr-total" }, [
+    cols(52, 36, 12),
+    el("tbody", {}, [el("tr", {}, [th("納入すべき金額　合計", { scope: "row" }), td(yen(f.total), { cls: "n" }), td("円", { cls: "tr-unit" })])]),
+  ]);
+
+  return el("div", { cls: "tr-wrap" }, [
+    el("div", { cls: "tr-sheet", attrs: { role: "document", "aria-label": "宿泊税納入申告書（印刷される部分）" } }, [
+      el("div", { cls: "tr-top" }, [
+        el("p", { text: "様式第１０号（規則第７条関係）" }),
+        el("p", { cls: "tr-date", text: `令和${f.date.era_year}年${f.date.month}月${f.date.day}日` }),
+      ]),
+      el("p", { text: "（宛先）宮崎市長" }),
+      el("dl", { cls: "tr-collector" }, [
+        el("p", { text: "（特別徴収義務者）" }),
+        el("div", {}, [el("dt", { text: "住　所（所在地）" }), el("dd", { text: v(f.collector.address) })]),
+        el("div", {}, [el("dt", { text: "氏　名（名称）" }), el("dd", { text: v(f.collector.name) })]),
+        el("div", {}, [el("dt", { text: "法人番号" }), el("dd", { text: v(f.collector.corporate_no) })]),
+      ]),
+      el("h3", { cls: "tr-title", text: "宿泊税納入申告書" }),
+      el("p", { cls: "tr-lead", text: "宿泊税の納入について、宮崎市宿泊税条例第１１条第１項の規定により、次のとおり申告します。" }),
+      facility,
+      amount(true),
+      amount(false),
+      amount(false),
+      total,
+      el("div", { cls: "tr-notes" }, [
+        el("p", { text: "備考" }),
+        el("p", { text: "１　納入すべき金額が０円の場合でも申告書の提出が必要です。" }),
+        el("p", { text: "２　特例適用に当たっては、宿泊税納入期限等特例承認申請書（様式第１１号）の提出後に市の承認が必要です。" }),
+      ]),
+    ]),
+  ]);
 }
 
 function taxBreakdown(d) {
@@ -1445,6 +1578,17 @@ const INN_FORM = [
   ["min_price", "1泊のいちばん安い値段（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
 ];
 
+// 宿泊税の申告書（宮崎市 様式第10号）に書くこと。どれも任意。空なら申告書のその欄は空けて出す
+const INN_TAX_FORM = [
+  ["collector_address", "特別徴収義務者の住所（所在地）", "text", { maxlength: "100", autocomplete: "off" }],
+  ["collector_name", "特別徴収義務者の氏名（名称）", "text", { maxlength: "60", autocomplete: "off" }],
+  ["corporate_no", "法人番号（13けた・個人の方は空のまま）", "text", { inputmode: "numeric", maxlength: "20", autocomplete: "off" }],
+  ["inn_phone", "宿の電話番号", "tel", { maxlength: "20", placeholder: "例：0985-00-0000", autocomplete: "off" }],
+  ["facility_no", "施設番号（市から知らされた番号）", "text", { maxlength: "20", inputmode: "latin", autocomplete: "off" }],
+  ["contact_name", "担当者", "text", { maxlength: "30", autocomplete: "off" }],
+  ["contact_phone", "担当者の電話番号", "tel", { maxlength: "20", placeholder: "例：090-0000-0000", autocomplete: "off" }],
+];
+
 async function showSettings() {
   const p = $("panel-settings");
   p.replaceChildren(loading("読み込んでいます"));
@@ -1495,6 +1639,9 @@ function innCard(d) {
   return el("article", { cls: "card" }, [
     el("h2", { text: "宿の設定" }),
     el("div", { cls: "fields" }, INN_FORM.map(row)),
+    el("h3", { cls: "set-sub", text: "宿泊税の申告書に書くこと（任意）" }),
+    el("p", { cls: "sub", text: "宿泊税の画面の「申告書をつくる」で、宮崎市の様式に入ります。空の欄は、申告書でも空けたままにします（手で書けます）" }),
+    el("div", { cls: "fields" }, INN_TAX_FORM.map(row)),
     problems,
     el("div", { cls: "btns" }, [btn("保存する", save, "btn primary")]),
   ]);
@@ -3356,8 +3503,8 @@ function watchDecisions() {
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings, ledger: showLedger };
-const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定", ledger: "予約の台帳" };
+const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, taxreturn: showTaxReturn, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings, ledger: showLedger };
+const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", taxreturn: "宿泊税の申告書", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定", ledger: "予約の台帳" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -3372,9 +3519,9 @@ function show(name) {
     loadFacts();
     return;
   }
-  // 決裁箱は開くたびに読み直す（見回りやメールで中身が変わるため）
-  if (name === "decisions") {
-    showDecisions();
+  // 決裁箱は開くたびに読み直す（見回りやメールで中身が変わるため）。申告書も、集計表で選んだ月と設定を毎回読み直す
+  if (name === "decisions" || name === "taxreturn") {
+    SHOW[name]();
     return;
   }
   if (!state.loaded[name]) {
