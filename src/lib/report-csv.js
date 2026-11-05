@@ -55,7 +55,7 @@ export function submissionCsv(report, notificationNo) {
       .filter((r) => r.unknown_nationality > 0)
       .map((r) => ({ reservation_id: r.reservation_id, checkin_date: r.checkin_date, missing: r.unknown_nationality }));
     throw new ReportCsvError(
-      `国籍が分からない人が${report.nationality.UNKNOWN}人います。予約の画面で国籍を入れてから、もう一度つくってください`,
+      `国籍が分からない人が${report.nationality.UNKNOWN}人います。下の「この予約を直す」から国籍を入れてから、もう一度つくってください`,
       { fix: "nationality", reservations },
     );
   }

@@ -10,6 +10,7 @@ const OTA = { airbnb: "Airbnb", booking: "Booking.com", direct: "直接予約", 
 const COUNTRY = {
   JP: "日本", KR: "韓国", TW: "台湾", CN: "中国", HK: "香港", US: "アメリカ", AU: "オーストラリア",
   GB: "イギリス", FR: "フランス", DE: "ドイツ", SG: "シンガポール", TH: "タイ", OTHER: "その他", UNKNOWN: "分からない",
+  MY: "マレーシア", ID: "インドネシア", PH: "フィリピン", VN: "ベトナム", IN: "インド", IT: "イタリア", ES: "スペイン", RU: "ロシア", CA: "カナダ",
 };
 const STATUS = {
   null: { label: "まだ", cls: "" },
@@ -19,7 +20,7 @@ const STATUS = {
 };
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
-const state = { today: null, kpiMonth: null, taxMonth: null, period: null, selectedRes: null, loaded: {} };
+const state = { today: null, kpiMonth: null, taxMonth: null, period: null, selectedRes: null, ledgerEdit: null, loaded: {} };
 
 // ---- 小さな道具 ----
 
@@ -805,7 +806,16 @@ async function submissionCsvDownload(period, box) {
     if (body.fix === "settings") parts.push(el("a", { cls: "btn", text: "宿と部屋の設定を開く", attrs: { href: "#settings" } }));
     if (body.reservations?.length) {
       parts.push(
-        el("ul", {}, body.reservations.map((x) => el("li", { text: `${jpDate(x.checkin_date)}に着く予約（${x.reservation_id}）：${x.missing}人分` }))),
+        el("ul", {}, body.reservations.map((x) =>
+          el("li", {}, [
+            `${jpDate(x.checkin_date)}に着く予約：${x.missing}人分　`,
+            btn("この予約を直す", () => {
+              state.ledgerEdit = x.reservation_id;
+              state.loaded.ledger = false;
+              go("ledger");
+            }, "btn small"),
+          ]),
+        )),
       );
     }
     box.replaceChildren(el("div", { cls: "notice warn" }, parts));
@@ -1404,6 +1414,254 @@ function roomsCard(d) {
         ])
       : el("p", { cls: "notice info", text: `部屋は${d.max_rooms}部屋までです` }),
     el("p", { cls: "notice info", text: "部屋の記号（A・B…）は自動で付き、あとから変わりません。止めた部屋は、過去の予約のために残ります。これからの予約がある部屋は、先に予約の部屋を移すまで止められません" }),
+  ]);
+}
+
+// ---- 予約の台帳：手で入れる・直す・取り消す（名前は預からない。名簿は別に作る） ----
+
+const OTA_PICK = [["airbnb", "Airbnb"], ["booking", "Booking.com"], ["rakuten", "楽天トラベル"], ["direct", "直接予約"], ["unknown", "そのほか・分からない"]];
+const TAX_PICK = [
+  ["unknown", "分からない"],
+  ["ota", "予約サイトで払い済み"],
+  ["included", "宿の料金に入れて受け取った"],
+  ["onsite", "チェックインの時に受け取る"],
+];
+// 定期報告の国籍の欄と同じ並び
+const NAT_PICK = ["JP", "KR", "TW", "HK", "CN", "TH", "SG", "MY", "ID", "PH", "VN", "IN", "GB", "DE", "FR", "IT", "ES", "RU", "US", "CA", "AU", "OTHER"];
+
+async function showLedger() {
+  const p = $("panel-ledger");
+  p.replaceChildren(loading("読み込んでいます"));
+  try {
+    renderLedger(await api("/api/ledger"));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showLedger));
+  }
+}
+
+// 台帳が変わったら、ほかの画面（カレンダー・数字・定期報告など）は次に開いたときに読み直す
+function ledgerChanged(d, note, warn) {
+  state.loaded = { ledger: true };
+  renderLedger(d, note ? el("p", { cls: `notice ${warn ? "warn" : "ok"}`, text: note }) : null);
+}
+
+function renderLedger(d, note = null) {
+  learnRooms(d.all_rooms);
+  const p = $("panel-ledger");
+  const formBox = el("div", { attrs: { id: "ledger-form" } });
+  const openForm = (r) => {
+    formBox.replaceChildren(resForm(d, r, () => formBox.replaceChildren()));
+    formBox.scrollIntoView({ block: "start" });
+    formBox.querySelector("select, input")?.focus();
+  };
+  const live = d.reservations.filter((r) => r.status === "confirmed");
+  const ahead = live.filter((r) => r.checkout_date > d.today);
+  const past = live.filter((r) => r.checkout_date <= d.today).reverse();
+  const cancelled = d.reservations.filter((r) => r.status !== "confirmed").reverse();
+  const list = (rows) => el("ul", { cls: "room-list" }, rows.map((r) => ledgerItem(d, r, openForm)));
+  const parts = [
+    el("h2", { cls: "h2", text: "予約の台帳" }),
+    note,
+    el("article", { cls: "card" }, [
+      el("h2", { text: "予約を手で入れる" }),
+      el("p", { cls: "lead", text: "電話や知り合いの予約、メールが読めなかった予約は、ここに入れます。180日・宿泊税・定期報告・カレンダーは、この台帳から数えます" }),
+      el("div", { cls: "btns" }, [btn("予約を手で入れる", () => openForm(null), "btn primary")]),
+      el("p", { cls: "notice info", text: "番頭は宿泊者の名前を預かりません。宿泊者名簿は、これまでどおり別に作ってください" }),
+    ]),
+    formBox,
+    el("article", { cls: "card" }, [
+      el("h2", { text: `これからの予約（${ahead.length}件）` }),
+      ahead.length ? list(ahead) : el("p", { cls: "notice info", text: "これからの予約はありません" }),
+    ]),
+    el("article", { cls: "card" }, [
+      el("details", {}, [el("summary", { text: `終わった予約（${past.length}件）` }), past.length ? list(past) : el("p", { cls: "notice info", text: "まだありません" })]),
+      el("details", {}, [el("summary", { text: `取り消した予約（${cancelled.length}件）` }), cancelled.length ? list(cancelled) : el("p", { cls: "notice info", text: "ありません" })]),
+    ]),
+  ];
+  p.replaceChildren(...parts.filter(Boolean));
+  // 定期報告の画面などから「この予約を直す」で来たとき
+  if (state.ledgerEdit) {
+    const r = live.find((x) => x.id === state.ledgerEdit);
+    state.ledgerEdit = null;
+    if (r) openForm(r);
+  }
+}
+
+function natText(r) {
+  const parts = Object.entries(r.nationalities).map(([c, n]) => `${COUNTRY[c] ?? c}${n}人`);
+  if (r.unknown_nationality > 0) parts.push(`分からない${r.unknown_nationality}人`);
+  return parts.join("・");
+}
+
+// 並びの中の文字は1つずつ枠に入れる（文字が続くと1つにくっついて、間が空かないため）
+const span = (x) => (typeof x === "string" ? el("span", { text: x }) : x);
+
+function ledgerItem(d, r, openForm) {
+  const live = r.status === "confirmed";
+  const ota = OTA_PICK.find(([k]) => k === r.ota)?.[1] ?? r.ota;
+  const people = [`大人${r.adults}`, r.children ? `子ども${r.children}` : null, r.infants ? `乳幼児${r.infants}` : null].filter(Boolean).join("・");
+  const facts = [
+    el("span", { cls: live ? "pill" : "pill out", text: live ? ota : "取り消し" }),
+    roomName(r.room),
+    `${people}（${r.guests}人）`,
+    r.amount_gross != null ? `${yen(r.amount_gross)}円` : "売上 未入力",
+    r.source === "hand" ? el("span", { cls: "pill", text: "手で入れた" }) : r.source === "mail" ? el("span", { cls: "pill", text: "メールから" }) : null,
+  ];
+  const warns = [];
+  if (live && r.unknown_nationality > 0) warns.push(el("span", { cls: "pill warn", text: `国籍が分からない人 ${r.unknown_nationality}人` }));
+  if (live && !r.room) warns.push(el("span", { cls: "pill warn", text: "部屋が決まっていません" }));
+  const cancelBox = el("div", { attrs: { "aria-live": "polite" } });
+  return el("li", { cls: `room-item${live ? "" : " is-off"}`, attrs: { id: `led-${r.id}` } }, [
+    el("p", { cls: "led-when" }, [el("b", { text: `${jpDate(r.checkin_date)}〜${jpDate(r.checkout_date)}` }), `（${r.nights}泊）`]),
+    el("p", { cls: "room-facts" }, facts.map(span)),
+    el("p", { cls: "room-facts" }, [
+      `国籍：${natText(r) || "—"}`,
+      `予約番号：${r.ota_reservation_no ?? "なし"}`,
+      live ? null : `キャンセル料 ${yen(r.cancel_fee_amount ?? 0)}円`,
+    ].map(span)),
+    warns.length ? el("p", { cls: "room-facts" }, warns) : null,
+    live ? el("div", { cls: "btns" }, [btn("直す", () => openForm(r), "btn small"), btn("取り消す", () => cancelForm(r, cancelBox), "btn small")]) : null,
+    cancelBox,
+  ]);
+}
+
+function cancelForm(r, box) {
+  const fee = el("input", { cls: "text-in", attrs: { id: `fee-${r.id}`, type: "text", inputmode: "numeric", maxlength: "9", placeholder: "なければ空のまま" } });
+  const problems = el("div", { attrs: { "aria-live": "polite" } });
+  const go = async () => {
+    try {
+      const res = await api(`/api/ledger/${r.id}/cancel`, { method: "POST", body: { cancel_fee_amount: toInt(fee.value) } });
+      ledgerChanged(res.ledger, res.note);
+      toast("取り消しにしました");
+    } catch (err) {
+      problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  };
+  box.replaceChildren(
+    el("div", { cls: "notice warn" }, [
+      el("p", { text: `${jpDate(r.checkin_date)}に着く予約を取り消します。180日・宿泊税・定期報告の数から外れます。予約サイトでの取り消しは、ご本人が行ってください` }),
+      el("div", { cls: "field" }, [el("label", { text: "キャンセル料（円）", attrs: { for: `fee-${r.id}` } }), fee]),
+      problems,
+      el("div", { cls: "btns" }, [btn("取り消しを決める", go, "btn primary"), btn("やめる", () => box.replaceChildren(), "btn small")]),
+    ]),
+  );
+  fee.focus();
+}
+
+// 全角の数字・カンマ・「円」はそのまま受ける。空は「入れていない」。数字でなければそのまま送り、サーバーの言葉で返す
+function toInt(s) {
+  const t = String(s ?? "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[,，円\s]/g, "");
+  if (t === "") return null;
+  return /^\d+$/.test(t) ? Number(t) : t;
+}
+
+function resForm(d, r, close) {
+  const v = r ?? { ota: "direct", adults: 2, children: 0, infants: 0, cosleep_free: 0, room: null, nationalities: {}, tax_collection: "unknown", language: null };
+  const inputs = {};
+  const field = (key, label, control) => {
+    control.id = `led-f-${key}`;
+    inputs[key] = control;
+    return el("div", { cls: "field" }, [el("label", { text: label, attrs: { for: control.id } }), control]);
+  };
+  const pick = (pairs, value) => {
+    const s = el("select", {}, pairs.map(([k, t]) => el("option", { text: t, attrs: { value: k } })));
+    s.value = value ?? pairs[0][0];
+    return s;
+  };
+  const text = (value, attrs) => {
+    const i = el("input", { cls: "text-in", attrs: { type: "text", ...attrs } });
+    i.value = value ?? "";
+    return i;
+  };
+  const count = (value) => text(value, { inputmode: "numeric", maxlength: "2" });
+
+  const roomPairs = [["", "部屋未定"], ...d.rooms.map((x) => [x.code, x.name])];
+  if (r?.room && !d.rooms.some((x) => x.code === r.room)) roomPairs.push([r.room, `${roomName(r.room)}（止めている部屋）`]);
+
+  // 国籍：国と人数の組を足していく
+  const natRows = el("ul", { cls: "nat-rows" });
+  const addNat = (code = "JP", n = "") => {
+    const s = pick(NAT_PICK.map((c) => [c, COUNTRY[c] ?? c]), code);
+    s.setAttribute("aria-label", "国籍");
+    const i = count(n);
+    i.setAttribute("aria-label", "人数");
+    const li = el("li", { cls: "nat-row" }, [s, i, el("span", { text: "人" }), btn("消す", () => li.remove(), "btn small")]);
+    natRows.append(li);
+    return i;
+  };
+  for (const [c, n] of Object.entries(v.nationalities ?? {})) addNat(c, String(n));
+
+  const problems = el("div", { attrs: { "aria-live": "polite" } });
+  const save = async () => {
+    const nationalities = {};
+    for (const li of natRows.children) {
+      const [s, i] = li.querySelectorAll("select, input");
+      const n = toInt(i.value);
+      if (n === null) continue;
+      if (typeof n !== "number") {
+        problems.replaceChildren(el("p", { cls: "notice danger", text: "国籍ごとの人数は数字で入れてください" }));
+        i.focus();
+        return;
+      }
+      nationalities[s.value] = (nationalities[s.value] ?? 0) + n;
+    }
+    const body = {
+      ota: inputs.ota.value,
+      ota_reservation_no: inputs.ota_reservation_no.value.trim() || null,
+      checkin_date: inputs.checkin_date.value,
+      checkout_date: inputs.checkout_date.value,
+      adults: toInt(inputs.adults.value),
+      children: toInt(inputs.children.value),
+      infants: toInt(inputs.infants.value),
+      cosleep_free: toInt(inputs.cosleep_free.value),
+      room: inputs.room.value || null,
+      nationalities,
+      amount_gross: toInt(inputs.amount_gross.value),
+      tax_collection: inputs.tax_collection.value,
+      language: inputs.language.value || null,
+    };
+    try {
+      const res = await api(r ? `/api/ledger/${r.id}` : "/api/ledger", { method: "POST", body });
+      ledgerChanged(res.ledger, res.note, r && res.note !== "直しました");
+      toast(r ? "予約を直しました" : "予約を台帳に入れました");
+      document.getElementById(`led-${res.id}`)?.scrollIntoView({ block: "center" });
+    } catch (err) {
+      problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+      const f = err.body?.field;
+      (f === "nationalities" ? natRows.querySelector("select") : inputs[f])?.focus();
+    }
+  };
+
+  return el("article", { cls: "card" }, [
+    el("h2", { text: r ? `予約を直す（${jpDate(r.checkin_date)}に着く予約）` : "予約を手で入れる" }),
+    r ? el("p", { cls: "lead", text: "着く日・出る日・人数を変えると、前に作ったゲスト画面のURLは止まります。到着前の案内も作り直してください" }) : null,
+    el("div", { cls: "fields" }, [
+      field("ota", "予約の入り口", pick(OTA_PICK, v.ota)),
+      field("ota_reservation_no", "予約番号（任意）", text(v.ota_reservation_no, { maxlength: "40", inputmode: "latin" })),
+      field("checkin_date", "着く日", text(v.checkin_date, { type: "date" })),
+      field("checkout_date", "出る日", text(v.checkout_date, { type: "date" })),
+      field("room", "部屋", pick(roomPairs, v.room ?? "")),
+    ]),
+    el("div", { cls: "fields" }, [
+      field("adults", "大人", count(v.adults)),
+      field("children", "子ども", count(v.children)),
+      field("infants", "乳幼児", count(v.infants)),
+      field("cosleep_free", "うち添い寝（料金なし）", count(v.cosleep_free)),
+    ]),
+    el("div", { cls: "field nat-field" }, [
+      el("p", { cls: "nat-label", text: "国籍と人数（定期報告に入ります。分からない人は入れなくてかまいません）" }),
+      natRows,
+      el("div", { cls: "btns" }, [btn("＋ 国を足す", () => addNat().focus(), "btn small")]),
+    ]),
+    el("div", { cls: "fields" }, [
+      field("amount_gross", "売上（円・任意）", text(v.amount_gross, { inputmode: "numeric", maxlength: "12" })),
+      field("tax_collection", "宿泊税の受け取り方", pick(TAX_PICK, v.tax_collection)),
+      field("language", "案内の言葉", pick([["", "まだ決めていない"], ...Object.entries(LANG)], v.language ?? "")),
+    ]),
+    problems,
+    el("div", { cls: "btns" }, [btn(r ? "直した内容で保存" : "台帳に入れる", save, "btn primary"), btn("やめる", close, "btn small")]),
   ]);
 }
 
@@ -2968,8 +3226,8 @@ function watchDecisions() {
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings };
-const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定" };
+const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings, ledger: showLedger };
+const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定", ledger: "予約の台帳" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";

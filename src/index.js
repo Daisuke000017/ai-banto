@@ -7,6 +7,7 @@
 // - /api/drafts?reservation_id=         到着前案内の下書き一覧（暗証番号は伏せる）
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
+// - /api/ledger                         予約の台帳（過去・取り消しも。名前は出さない）
 // - /api/cleaning                       清掃が必要な日（M18）：今日から3週間のチェックアウトの日と入れ替え（見るだけ）
 // - /api/calendar?month=YYYY-MM          宿泊カレンダー（M21）：1か月の、日ごとの泊まり・チェックイン・チェックアウト（見るだけ）
 // - /api/drill                          訓練（M15）の状態と、今回の訓練の避難の案内の下書き
@@ -28,6 +29,10 @@
 // - POST /api/g/:token/profile            人数・国籍を入れる {language, adults, children, infants, nationalities}
 //                                         （台帳は書きかえない。違えば「ずれ」に入れ、オーナーがOKしたときだけ台帳に入る）
 // - POST /api/g/:token/ask?time=          行って戻れるか（M14）{lang, dest | text, back_by?}（AIの質問は1つのURLにつき1日10回まで）
+// 予約の台帳（オーナーが手で書く。名前は預からない）
+// - POST /api/ledger                      予約を手で入れる
+// - POST /api/ledger/:id                  直す（日付・人数が変わったら、ゲスト画面のURLを止める）
+// - POST /api/ledger/:id/cancel           取り消す {cancel_fee_amount?}
 // 予約メール（M17・貼り付け版）
 // - GET  /api/booking-emails?status=pending|done   確認待ち／決めたもの（伏せた本文だけ）
 // - GET  /api/booking-emails/samples                デモ用の見本メール
@@ -60,7 +65,8 @@ import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
 import { stayCalendar } from "./lib/calendar.js";
-import { checkRoomName, MAX_ROOMS, nextRoomCode } from "./lib/rooms.js";
+import { checkRoomName, MAX_ROOMS, nextRoomCode, roomCodes } from "./lib/rooms.js";
+import { checkCancelFee, checkReservationInput, partyChanged, roomClash, sameNumber } from "./lib/reservation-edit.js";
 import { checkInnPatch } from "./lib/inn-settings.js";
 import { ReportCsvError, submissionCsv } from "./lib/report-csv.js";
 import { makeClient } from "./lib/anthropic.js";
@@ -340,6 +346,7 @@ async function handleGet(url, env, today) {
     });
   }
   if (p === "/api/settings") return json(await settingsView(env, today));
+  if (p === "/api/ledger") return json(await ledgerView(env, today));
   if (p === "/api/drill") return json(await drillState(env, today));
   if (p === "/api/eval/results") return json(await evalResults(env.DB));
   if (p === "/api/team/runs") {
@@ -973,6 +980,134 @@ async function handleSettingsPost(request, url, env, today) {
   return null;
 }
 
+// ---- 予約の台帳（手で入れる・直す・取り消す） ----
+
+const LEDGER_COLUMNS = `id, ota, ota_reservation_no, checkin_date, checkout_date, nights, adults, children, infants, cosleep_free,
+  room, nationalities_json, amount_gross, tax_collection, lodging_tax_collected, language, status, cancel_fee_amount, guest_changes_json`;
+
+const parseNat = (t) => {
+  try {
+    const o = JSON.parse(t ?? "{}");
+    return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+  } catch {
+    return {};
+  }
+};
+
+function ledgerRow(r) {
+  const nationalities = parseNat(r.nationalities_json);
+  const heads = headcount({ adults: r.adults ?? 0, children: r.children ?? 0, infants: r.infants ?? 0 });
+  const known = Object.values(nationalities).reduce((a, b) => a + Number(b), 0);
+  const { nationalities_json, guest_changes_json, ...rest } = r;
+  return {
+    ...rest,
+    nationalities,
+    guests: heads,
+    unknown_nationality: Math.max(0, heads - known),
+    changes_on_the_way: Boolean(guest_changes_json),
+    source: r.id.startsWith("RH-") ? "hand" : r.id.startsWith("RM") ? "mail" : "seed",
+  };
+}
+
+async function ledgerView(env, today) {
+  const inn = await loadInn(env);
+  const { results } = await env.DB.prepare(`SELECT ${LEDGER_COLUMNS} FROM reservations ORDER BY checkin_date, id LIMIT 1000`).all();
+  const rooms = inn.room_list.length ? inn.room_list : roomCodes(Number(inn.rooms ?? 1)).map((code) => ({ code, name: `部屋${code}` }));
+  return { today, rooms, all_rooms: inn.all_rooms.map(({ code, name, active }) => ({ code, name, active: active === 1 })), reservations: (results ?? []).map(ledgerRow) };
+}
+
+const nightsInsert = (env, r) =>
+  stayNightRows([r]).map((s) =>
+    env.DB.prepare("INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES (?, ?, ?, ?)").bind(s.reservation_id, s.night, s.fiscal_year, s.guests),
+  );
+
+const shortDate = (d) => `${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日`;
+
+async function handleLedgerPost(request, url, env, today) {
+  const p = url.pathname;
+  const body = await readJsonBody(request, url);
+  const inn = await loadInn(env);
+  const active = inn.room_list.length ? inn.room_list.map((r) => r.code) : roomCodes(Number(inn.rooms ?? 1));
+  const roomName = (code) => inn.all_rooms.find((r) => r.code === code)?.name ?? `部屋${code}`;
+  const { results: others } = await env.DB.prepare("SELECT id, ota, ota_reservation_no, room, checkin_date, checkout_date, status FROM reservations").all();
+
+  // 入力を確かめる（部屋の重なり・同じ予約番号も見る）
+  const check = (input, rooms, selfId) => {
+    const c = checkReservationInput(input, { rooms });
+    if (c.error) return { res: json({ error: c.error, field: c.field }, 400) };
+    const clash = roomClash(c.values, others, selfId);
+    if (clash) {
+      return {
+        res: json({ error: `${roomName(clash.room)}は、${shortDate(clash.checkin_date)}〜${shortDate(clash.checkout_date)}の予約（${clash.ota_reservation_no ? `予約番号 ${clash.ota_reservation_no}` : "番号なし"}）と重なっています。部屋か日付を変えてください`, field: "room" }, 409),
+      };
+    }
+    const dup = sameNumber(c.values, others, selfId);
+    if (dup) return { res: json({ error: `同じ予約番号の予約が、もう台帳にあります（${shortDate(dup.checkin_date)}に着く予約）`, field: "ota_reservation_no" }, 409) };
+    return { values: c.values };
+  };
+
+  if (p === "/api/ledger") {
+    const c = check(body, active, null);
+    if (c.res) return c.res;
+    const v = c.values;
+    const hex = [...crypto.getRandomValues(new Uint8Array(4))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    const id = `RH-${hex}`;
+    const r = { id, status: "confirmed", guest_changes_json: null, ...v };
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, cosleep_free,
+           language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')`,
+      ).bind(id, v.ota, v.ota_reservation_no, v.checkin_date, v.checkout_date, v.nights, v.adults, v.children, v.infants, v.cosleep_free,
+        v.language, v.tax_collection, v.lodging_tax_collected, JSON.stringify(v.nationalities), v.amount_gross, v.room),
+      ...nightsInsert(env, r),
+    ]);
+    return json({ ok: true, id, note: "台帳に入れました。宿泊者名簿は、別に作ってください（番頭は名前を預かりません）", ledger: await ledgerView(env, today) }, 201);
+  }
+
+  const m = p.match(/^\/api\/ledger\/([A-Za-z0-9_-]{1,40})(\/cancel)?$/);
+  if (!m) return null;
+  const cur = await env.DB.prepare(`SELECT ${LEDGER_COLUMNS} FROM reservations WHERE id = ?`).bind(m[1]).first();
+  if (!cur) throw new HttpError(404, "予約が見つかりません");
+  if (cur.status !== "confirmed") throw new HttpError(409, "取り消した予約は、もう変えられません");
+
+  if (m[2]) {
+    const fee = checkCancelFee(body.cancel_fee_amount);
+    if (fee.error) return json({ error: fee.error, field: "cancel_fee_amount" }, 400);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE reservations SET status = 'cancelled', cancel_fee_amount = ? WHERE id = ? AND status = 'confirmed'").bind(fee.fee, cur.id),
+      env.DB.prepare("DELETE FROM stay_nights WHERE reservation_id = ?").bind(cur.id),
+      env.DB.prepare("UPDATE guest_links SET revoked = 1 WHERE reservation_id = ?").bind(cur.id),
+    ]);
+    return json({ ok: true, id: cur.id, note: "取り消しにしました。180日と定期報告の数から外れます（ゲスト画面のURLは止めました）", ledger: await ledgerView(env, today) });
+  }
+
+  // 止めた部屋に入っている予約は、その部屋のままなら直せる
+  const rooms = cur.room && !active.includes(cur.room) ? [...active, cur.room] : active;
+  const c = check(body, rooms, cur.id);
+  if (c.res) return c.res;
+  const v = c.values;
+  const changed = partyChanged(cur, v);
+  const r = { id: cur.id, status: "confirmed", ...v, guest_changes_json: changed ? null : cur.guest_changes_json };
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE reservations SET ota = ?, ota_reservation_no = ?, checkin_date = ?, checkout_date = ?, nights = ?, adults = ?, children = ?, infants = ?,
+         cosleep_free = ?, language = ?, tax_collection = ?, lodging_tax_collected = ?, nationalities_json = ?, amount_gross = ?, room = ?, guest_changes_json = ?
+       WHERE id = ? AND status = 'confirmed'`,
+    ).bind(v.ota, v.ota_reservation_no, v.checkin_date, v.checkout_date, v.nights, v.adults, v.children, v.infants, v.cosleep_free,
+      v.language, v.tax_collection, v.lodging_tax_collected, JSON.stringify(v.nationalities), v.amount_gross, v.room, r.guest_changes_json, cur.id),
+    env.DB.prepare("DELETE FROM stay_nights WHERE reservation_id = ?").bind(cur.id),
+    ...nightsInsert(env, r),
+    ...(changed ? [env.DB.prepare("UPDATE guest_links SET revoked = 1 WHERE reservation_id = ?").bind(cur.id)] : []),
+  ]);
+  const note = changed
+    ? "直しました。日付か人数が変わったので、前のゲスト画面のURLは止めました。到着前の案内も作り直してください"
+    : "直しました";
+  return json({ ok: true, id: cur.id, note, ledger: await ledgerView(env, today) });
+}
+
+const isLedgerPath = (p) => p === "/api/ledger" || p.startsWith("/api/ledger/");
+
 const isSettingsPath = (p) => p === "/api/settings/inn" || p === "/api/rooms" || p.startsWith("/api/rooms/");
 
 const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
@@ -1022,6 +1157,9 @@ export default {
         if (res) return res;
       } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links" || url.pathname === "/api/drill")) {
         const res = await handlePost(request, url, env);
+        if (res) return res;
+      } else if (request.method === "POST" && isLedgerPath(url.pathname)) {
+        const res = await handleLedgerPost(request, url, env, today);
         if (res) return res;
       } else if (request.method === "POST" && isSettingsPath(url.pathname)) {
         const res = await handleSettingsPost(request, url, env, today);
