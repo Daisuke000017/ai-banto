@@ -669,7 +669,7 @@ async function decideEvent(b, id, what) {
 async function searchLevelEvents(b) {
   lockLevels(true);
   const msg = $("event-msg");
-  teamWorking((note) => msg?.replaceChildren(loading(`${note}（20〜60秒ほど）`)), EVENT_STEPS);
+  teamWorking((note) => msg?.replaceChildren(loading(`${note}（1〜3分ほど）`)), EVENT_STEPS);
   try {
     const r = await api("/api/price-events/search", { method: "POST", body: {} });
     const f = r.found;

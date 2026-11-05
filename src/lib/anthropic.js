@@ -184,6 +184,10 @@ export async function callJson({
  * - 見たページ（urls）はAIの答えではなく、検索の結果そのものから集める。あとでプログラムが「出典が本当に見たページか」を確かめる
  * @returns {Promise<{text: string, urls: {url: string, title: string}[], runId: number|null, model: string}>}
  */
+// ネット検索は何度もページを見るので、ふつうの60秒では足りない（2026-11-06 本物で試して時間切れ）。
+// 1回を長めに待ち、やり直しはしない（やり直すと検索の料金が2回かかるため）
+export const SEARCH_REQUEST_OPTIONS = { timeout: 180_000, maxRetries: 0 };
+
 export async function callSearch({
   client,
   db,
@@ -227,7 +231,7 @@ export async function callSearch({
         tools,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-      });
+      }, SEARCH_REQUEST_OPTIONS);
     } catch (e) {
       const message = describeApiError(e);
       await finishRun(db, runId, { status: "failed", outputSummary: message, model: usedModel, tokensIn, tokensOut });

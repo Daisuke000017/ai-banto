@@ -131,7 +131,7 @@ export async function searchEvents({ client, db, today }) {
       system: SEARCH_SYSTEM,
       input: { today, from, to, area: "宮崎県宮崎市", already_known: alreadyKnown },
       allowedDomains: ALLOWED_DOMAINS,
-      maxUses: 5,
+      maxUses: 3,
       inputSummary: `宮崎市の行事 ${from}〜${to}`,
     });
     if (!searched.urls.length) return { added: 0, found: 0, dropped: [], pages: 0 };

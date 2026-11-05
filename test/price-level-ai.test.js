@@ -7,6 +7,7 @@ import { checkChanges, cleanMarketNote, MARKET_NOTE_MAX, suggestLevels } from ".
 import { checkFoundEvents, normalizeUrl, sampleEventDay, searchEvents } from "../src/lib/price-events-ai.js";
 import { planLevels } from "../src/lib/price-levels.js";
 import { MODELS } from "../src/lib/models.js";
+import { SEARCH_REQUEST_OPTIONS } from "../src/lib/anthropic.js";
 import { reasonJa } from "../src/lib/eval.js";
 import { DEMO_TODAY, innProfile, reservations } from "../seed/demo-reservations.js";
 
@@ -17,11 +18,13 @@ const base = { db: null, today, inn, reservations };
 /** にせのAI：queue の答えを順に返す（Error なら失敗させる。{raw} ならそのまま返す） */
 function mk(queue) {
   const calls = [];
+  const optsList = [];
   const client = {
     beta: {
       messages: {
-        create: async (params) => {
+        create: async (params, opts) => {
           calls.push(params);
+          optsList.push(opts);
           const x = queue.shift();
           if (x instanceof Error) throw x;
           if (x?.raw) return x.raw;
@@ -30,7 +33,7 @@ function mk(queue) {
       },
     },
   };
-  return { client, calls };
+  return { client, calls, optsList };
 }
 const inputOf = (call) => JSON.parse(call.messages[0].content);
 const levelOf = (res, night) => res.nights.find((n) => n.night === night);
@@ -168,7 +171,7 @@ test("行事を探す：公式のサイトだけを検索し、見たページ�
       { name: "ほかのサイトの行事", start_day: "2026-12-06", end_day: "2026-12-06", place: "", source_url: "https://example.com", source_title: "", crowd: "unknown" },
     ],
   };
-  const { client, calls } = mk([searchReply, readReply]);
+  const { client, calls, optsList } = mk([searchReply, readReply]);
   const inserted = [];
   const db = {
     prepare: (sql) => ({
@@ -184,6 +187,9 @@ test("行事を探す：公式のサイトだけを検索し、見たページ�
   assert.equal(inserted[0][0], "冬の音楽祭");
   assert.deepEqual(calls[0].tools[0].allowed_domains, ["miyazaki-city.tourism.or.jp", "www.city.miyazaki.miyazaki.jp"]);
   assert.equal(calls[0].tools[0].type, "web_search_20260209");
+  // 検索は時間がかかるので長めに待ち、やり直さない（料金が2回かからないように）
+  assert.deepEqual(optsList[0], SEARCH_REQUEST_OPTIONS);
+  assert.equal(calls[0].tools[0].max_uses, 3);
 });
 
 test("デモの見本の行事は、28日以上先の最初の土曜", () => {
