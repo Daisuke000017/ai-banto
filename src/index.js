@@ -1014,7 +1014,7 @@ function ledgerRow(r) {
 
 async function ledgerView(env, today) {
   const inn = await loadInn(env);
-  const { results } = await env.DB.prepare(`SELECT ${LEDGER_COLUMNS} FROM reservations ORDER BY checkin_date, id LIMIT 1000`).all();
+  const { results } = await env.DB.prepare(`SELECT * FROM (SELECT ${LEDGER_COLUMNS} FROM reservations ORDER BY checkin_date DESC, id DESC LIMIT 1000) ORDER BY checkin_date, id`).all();
   const rooms = inn.room_list.length ? inn.room_list : roomCodes(Number(inn.rooms ?? 1)).map((code) => ({ code, name: `部屋${code}` }));
   return { today, rooms, all_rooms: inn.all_rooms.map(({ code, name, active }) => ({ code, name, active: active === 1 })), reservations: (results ?? []).map(ledgerRow) };
 }

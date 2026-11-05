@@ -40,7 +40,7 @@ export function checkInnPatch(body, current = {}) {
     ["address", (v) => text(v, "住所", 100)],
     ["notification_no", (v) => {
       const r = text(v, "届出番号", 30);
-      if (r.value && !/^[0-9A-Za-z第号\-]+$/.test(r.value)) return { error: "届出番号は英数字（例：M012345678）で入れてください" };
+      if (r.value && !/^[0-9A-Za-z第号][0-9A-Za-z第号-]*$/.test(r.value)) return { error: "届出番号は英数字（例：M012345678）で入れてください" };
       return r;
     }],
     ["cleaning_checkout_time", (v) => time(v, "チェックアウトの時刻")],

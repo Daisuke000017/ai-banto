@@ -9,6 +9,7 @@ import {
   COOKIE_NAME,
   constantTimeEqual,
   hashPassword,
+  ipGroup,
   isOpenPath,
   LOCK_WINDOW_MS,
   MAX_FAILURES_ALL,
@@ -290,4 +291,28 @@ test("大きすぎる中身は、読む前に断る", async () => {
     { waitUntil() {} },
   );
   assert.equal(r.status, 413);
+});
+
+test("IPv6 は /64 ごとに1つの相手として数える（アドレスを変えても回数は減らない）", async () => {
+  assert.equal(ipGroup("2001:db8:1:2::5"), ipGroup("2001:0db8:0001:0002:ffff:1:2:3"));
+  assert.notEqual(ipGroup("2001:db8:1:2::5"), ipGroup("2001:db8:1:3::5"));
+  assert.equal(ipGroup("::1"), "0:0:0:0::/64");
+  assert.equal(ipGroup("203.0.113.9"), "203.0.113.9");
+  const env = await envWith();
+  for (let i = 0; i < 5; i++) assert.equal((await login(env, REMOTE, "wrong", `2001:db8:1:2::${i + 1}`)).res.status, 401);
+  assert.equal((await login(env, REMOTE, PASSWORD, "2001:db8:1:2::99")).res.status, 429);
+  assert.equal((await login(env, REMOTE, PASSWORD, "2001:db8:9:9::1")).res.status, 200);
+});
+
+test("ログインできても、消すのは自分のまちがいの記録だけ", async () => {
+  const env = await envWith();
+  for (let i = 0; i < 3; i++) await login(env, REMOTE, "wrong", "203.0.113.20");
+  await login(env, REMOTE, "wrong", "198.51.100.30");
+  assert.equal((await login(env, REMOTE, PASSWORD, "198.51.100.30")).res.status, 200);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM owner_login_failures").get().n, 3);
+});
+
+test("本番の設定（wrangler.jsonc）に、デモの「今日」を入れていない", () => {
+  const conf = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(!conf.includes("DEMO_TODAY"));
 });

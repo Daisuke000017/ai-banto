@@ -3,10 +3,8 @@
   "name": "ai-banto",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
-  "vars": {
-    // デモの「今日」。撮影の日付に関係なく、画面の数字が同じになるように固定する
-    "DEMO_TODAY": "2026-10-10"
-  },
+  // デモの「今日」（DEMO_TODAY）はここに書かない。本番に乗ると時計が止まるため（ゾロ審査 2026-11-05）
+  // 手元では npm run dev が --var DEMO_TODAY:2026-10-10 を付けて起動する
   // 画面（public/）。先に Worker を通して、手元以外からの表示を止め・安全のヘッダーを付ける
   "assets": {
     "directory": "public",

@@ -60,6 +60,7 @@ test("宿の設定：まちがいは断る", () => {
   assert.ok(checkInnPatch({ name: "あ".repeat(41) }, cur).error);
   assert.ok(checkInnPatch({ notification_no: "M01 234" }, cur).error);
   assert.ok(checkInnPatch({ notification_no: "<b>" }, cur).error);
+  assert.ok(checkInnPatch({ notification_no: "-M012345678" }, cur).error); // 先頭の「-」は表計算で式とみなされうる
   assert.ok(checkInnPatch({ cleaning_fee: "-1" }, cur).error);
   assert.ok(checkInnPatch({ cleaning_fee: "1.5" }, cur).error);
   assert.ok(checkInnPatch({ min_price: 2_000_000 }, cur).error);

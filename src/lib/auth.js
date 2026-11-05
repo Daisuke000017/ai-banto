@@ -3,7 +3,8 @@
 //   形：pbkdf2$100000$<塩 base64>$<ハッシュ base64>（scripts/hash-password.js で作る）
 // - ログインすると、ランダムな鍵（32バイト）を Cookie に入れる。D1 にはその sha256 と期限だけを置く
 // - 15分のうちに、同じ相手（IP）から5回まちがえたら、その15分が過ぎるまで断る
-//   よそからわざとまちがえてオーナーを締め出せないよう、数えるのは相手ごと。全体でも50回で断る（総当たりの歯止め）
+//   よそからわざとまちがえてオーナーを締め出せないよう、数えるのは相手ごと（IPv6 は /64 ごと）。全体でも50回で断る（総当たりの歯止め）
+//   全体の50回で締め出されたら：15分待つか、D1 で DELETE FROM owner_login_failures を流す
 // - Secret が無いとき：手元（localhost）は開いたまま（デモ用）。それ以外からは、オーナーの画面・API は 403
 // - ゲストの画面・API（宿のURL）とログイン画面だけは、ログインなしで開ける（OPEN の一覧に書いたものだけ）
 
@@ -138,8 +139,18 @@ export async function deleteSession(request, env) {
 
 // ---- ログイン（まちがいの回数を数える） ----
 // 送ってきた相手の印。IP そのものは置かず、Secret を混ぜた sha256 にする
+// IPv6 は1つの契約で山ほどアドレスを持てるので、前半の64ビット（/64）ごとに1つの相手として数える
+export function ipGroup(ip) {
+  if (!ip || !ip.includes(":")) return ip || "local";
+  const [head, tail = ""] = ip.toLowerCase().split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const full = ip.includes("::") ? [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t] : h;
+  return full.slice(0, 4).map((x) => x.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+}
+
 export async function clientKey(request, env) {
-  const ip = request.headers.get("cf-connecting-ip") ?? "local";
+  const ip = ipGroup(request.headers.get("cf-connecting-ip") ?? "local");
   return sha256Hex(`${ip}|${env.OWNER_PASSWORD_HASH ?? ""}`);
 }
 
@@ -164,7 +175,8 @@ export async function tryLogin(env, password, now = Date.now(), who = "") {
     if (loginEnabled(env) && !parseHash(env.OWNER_PASSWORD_HASH)) console.error("auth", "bad OWNER_PASSWORD_HASH format");
     return { ok: false, locked: false };
   }
-  await env.DB.prepare("DELETE FROM owner_login_failures").run();
+  // 消すのは自分のまちがいだけ（よその相手の回数まで0に戻さない）
+  await env.DB.prepare("DELETE FROM owner_login_failures WHERE who = ?").bind(who).run();
   return { ok: true, token: await createSession(env, now) };
 }
 
