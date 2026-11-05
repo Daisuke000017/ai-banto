@@ -605,6 +605,16 @@ body.drill::after {
 }
 .drill-panel { display: grid; gap: var(--s4); margin-bottom: var(--s5); }
 .card.evac { border-left: 6px solid var(--danger); }
+
+/* 決裁箱（M20）：左の線で急ぎ具合。色だけでなく「急ぎ」などの札でも伝える */
+.dx { border-left: 6px solid var(--line); }
+.dx.dx-urgent { border-left-color: var(--danger); }
+.dx.dx-warn { border-left-color: var(--warn); }
+.dx.dx-info { border-left-color: var(--ok); }
+.dx-title { margin-top: var(--s2); margin-bottom: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
+.dx-last { font-size: 16px; color: var(--ink-sub); margin-top: var(--s2); }
+.dx-done { display: grid; gap: var(--s2); font-size: 16px; line-height: 1.6; }
+.row-decisions .ico { background: var(--action); color: #fff; }
 @media (max-width: 560px) {
   .drill-btn { margin-left: 0; margin-top: var(--s2); width: 100%; }
 }

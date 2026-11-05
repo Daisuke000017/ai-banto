@@ -43,6 +43,12 @@
 // - GET  /api/discrepancies              ずれの一覧
 // - POST /api/discrepancies/:id/reasons  理由の候補を出す（経理担当→計算で確かめる→監査役）
 // - POST /api/discrepancies/:id          オーナーの判断 {action:"ok"|"fixed"|"open", note?}
+// 朝の見回り（M19）と決裁箱（M20）
+// - GET  /api/decisions                  決裁箱：まだ決めていないもの（急ぐ順）・さっき決めたもの・最後の見回り
+// - POST /api/patrol                     いま見回る（ボタン）
+// - POST /api/decisions/:id/ok           オーナーの OK（予約メールは台帳に入れる・案内は確認済みにする・ほかは「見た」）
+// - 定期ジョブ（scheduled）              毎朝7時（日本時間）に見回る
+// - メール受け取り（email）              決めた相手からの予約メールだけ読んで確認待ちに置き、見回る
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
@@ -77,6 +83,8 @@ import {
   OWNER_CHECK,
 } from "./lib/arrival.js";
 import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
+import { DecisionError, decideOk, listDecisions, runPatrol } from "./lib/patrol.js";
+import { MAX_RAW_BYTES, bytesToBinary, messageKeyOf, parseRawEmail, senderAllowed } from "./lib/mail-in.js";
 import { evalResults, teamRuns } from "./lib/eval.js";
 import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
 
@@ -188,6 +196,7 @@ const nowIso = (env) => (env.DEMO_TODAY ? `${env.DEMO_TODAY}T09:00:00+09:00` : n
 async function handleGet(url, env, today) {
   const p = url.pathname;
   if (p.startsWith("/api/booking-emails")) return handleBookingEmailGet(url, env);
+  if (p === "/api/decisions") return json(await listDecisions(env.DB));
   if (p === "/api/kpis") {
     const month = url.searchParams.get("month") ?? monthOf(today);
     if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
@@ -659,6 +668,96 @@ function aiClient(env) {
   }
 }
 
+// 朝の見回り（M19）：定期ジョブ・ボタン・メールの3つの入口から同じものを呼ぶ
+const PATROL_LIB = { listBookingEmails, generateArrivalDraft, cleaningDays, dayCounter, OWNER_CHECK };
+async function patrol(env, trigger) {
+  const inn = await loadInn(env);
+  return runPatrol({
+    db: env.DB,
+    trigger,
+    today: todayJst(env.DEMO_TODAY),
+    now: nowIso(env),
+    inn,
+    rules: rulesFromInnProfile(inn),
+    client: aiClient(env),
+    lib: PATROL_LIB,
+  });
+}
+
+// 決裁箱（M20）：書く
+async function handleDecisionPost(request, url, env, ctx) {
+  await readJsonBody(request, url);
+  if (url.pathname === "/api/patrol") {
+    const run = await patrol(env, "button");
+    return json({ patrol: run, ...(await listDecisions(env.DB)) });
+  }
+  const m = url.pathname.match(/^\/api\/decisions\/(\d+)\/ok$/);
+  if (!m) return null;
+  try {
+    const decided = await decideOk({
+      db: env.DB,
+      id: Number(m[1]),
+      now: nowIso(env),
+      lib: { loadBookingEmail, confirmBookingEmail, stayNightRows, OWNER_CHECK },
+    });
+    // 予約が台帳に入ったら、続けて見回る（近いチェックインなら到着前案内を用意する）。画面は待たせない
+    const followUp = decided.kind === "booking_email";
+    if (followUp && ctx?.waitUntil) {
+      ctx.waitUntil(patrol(env, "button").catch((e) => console.error("patrol", e instanceof Error ? e.name : "unknown")));
+    }
+    return json({ decided, follow_up_patrol: followUp, ...(await listDecisions(env.DB)) });
+  } catch (e) {
+    if (e instanceof DecisionError) throw new HttpError(e.status, e.message);
+    throw e;
+  }
+}
+
+// メール受け取り（M19）：決めた相手（MAIL_ALLOW_FROM）からの予約メールだけ読む。本文は伏せてから保存する
+// デモのときだけ、手元の試験用に「ota-demo.example」（だれも持てない試験用の名前）からのメールも受け取る
+const DEMO_MAIL_DOMAIN = "ota-demo.example";
+const mailAllow = (env) => [env.MAIL_ALLOW_FROM, env.DEMO_TODAY ? DEMO_MAIL_DOMAIN : ""].filter(Boolean).join(",");
+
+async function receiveEmail(message, env) {
+  const allow = mailAllow(env);
+  if (!senderAllowed(message.from, allow)) {
+    message.setReject("このアドレスでは受け付けていません");
+    return { ok: false, reason: "sender" };
+  }
+  if (Number(message.rawSize) > MAX_RAW_BYTES) {
+    message.setReject("メールが大きすぎます");
+    return { ok: false, reason: "size" };
+  }
+  const bytes = new Uint8Array(await new Response(message.raw).arrayBuffer());
+  if (bytes.length > MAX_RAW_BYTES) {
+    message.setReject("メールが大きすぎます");
+    return { ok: false, reason: "size" };
+  }
+  const parsed = parseRawEmail(bytesToBinary(bytes));
+  // 封筒の送り元と、本文の From が違うときは読まない（なりすましを減らすため）
+  if (parsed.from && !senderAllowed(parsed.from, allow)) {
+    message.setReject("このアドレスでは受け付けていません");
+    return { ok: false, reason: "sender" };
+  }
+  if (!parsed.text.trim()) return { ok: false, reason: "empty" };
+  const messageKey = await messageKeyOf(parsed);
+  const dup = await env.DB.prepare("SELECT id FROM booking_emails WHERE message_key = ?").bind(messageKey).first();
+  if (dup) return { ok: true, duplicate: true, id: dup.id };
+  const view = await intakeBookingEmail({
+    client: aiClient(env),
+    db: env.DB,
+    subject: parsed.subject,
+    body: parsed.text.slice(0, MAX_EMAIL_CHARS),
+    today: todayJst(env.DEMO_TODAY),
+    now: nowIso(env),
+    source: "email",
+    senderDomain: String(message.from).toLowerCase().split("@").pop(),
+    authPass: parsed.auth,
+    messageKey,
+  });
+  await patrol(env, "email");
+  return { ok: true, id: view.id };
+}
+
 const fileInput = (body) => ({
   base64: typeof body.base64 === "string" ? body.base64 : undefined,
   text: typeof body.text === "string" ? body.text : undefined,
@@ -711,7 +810,7 @@ async function serveAsset(request, env, path = null) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (!LOCAL_HOSTS.has(url.hostname)) return json({ error: "この画面はまだ公開していません" }, 403);
     const today = todayJst(env.DEMO_TODAY);
@@ -750,6 +849,9 @@ export default {
       } else if (request.method === "POST" && url.pathname.startsWith("/api/booking-emails")) {
         const res = await handleBookingEmailPost(request, url, env, today);
         if (res) return res;
+      } else if (request.method === "POST" && (url.pathname === "/api/patrol" || url.pathname.startsWith("/api/decisions/"))) {
+        const res = await handleDecisionPost(request, url, env, ctx);
+        if (res) return res;
       } else {
         return json({ error: "この操作は受け付けていません" }, 405);
       }
@@ -759,6 +861,24 @@ export default {
       // 中身（文や番号）は出さない
       console.error("error", e instanceof Error ? e.name : "unknown");
       return json({ error: "うまく処理できませんでした" }, 500);
+    }
+  },
+
+  // 毎朝7時（日本時間）の見回り。wrangler.jsonc の triggers.crons
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      patrol(env, "cron").catch((e) => console.error("patrol", e instanceof Error ? e.name : "unknown")),
+    );
+  },
+
+  // 予約メールの受け取り（Cloudflare のメール受け取り → この Worker）
+  async email(message, env) {
+    try {
+      const r = await receiveEmail(message, env);
+      console.log("email", r.ok ? (r.duplicate ? "duplicate" : "stored") : `rejected:${r.reason}`);
+    } catch (e) {
+      // 中身（文や番号）は出さない
+      console.error("email", e instanceof Error ? e.name : "unknown");
     }
   },
 };

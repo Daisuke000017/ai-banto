@@ -573,6 +573,8 @@ export async function viewRow(db, row) {
     received_at: row.received_at,
     status: row.status,
     read_by: row.read_by,
+    source: row.source ?? "paste",
+    sender_domain: row.sender_domain ?? null,
     fields,
     nights: nightsOfFields(fields),
     checks: check.items ?? [],
@@ -599,8 +601,12 @@ function publicReservation(r) {
   };
 }
 
-/** 貼り付けた予約メールを受け取る（伏せる → 書き写す → 確かめる → 確認待ちに置く） */
-export async function intakeBookingEmail({ client, db, subject, body, today, now }) {
+/**
+ * 予約メールを受け取る（伏せる → 書き写す → 確かめる → 確認待ちに置く）。
+ * 貼り付け（paste）と、メールで届いたもの（email・M19）の両方がここを通る。
+ * email のときは送り元のドメイン・認証の結果・同じメールを二度読まないための鍵も残す
+ */
+export async function intakeBookingEmail({ client, db, subject, body, today, now, source = "paste", senderDomain = null, authPass = null, messageKey = null }) {
   const masked = maskEmail(subject, body);
   let raw = null;
   let readBy = "ai";
@@ -625,11 +631,13 @@ export async function intakeBookingEmail({ client, db, subject, body, today, now
   const nowMs = Date.parse(now);
   const row = await db
     .prepare(
-      `INSERT INTO booking_emails (received_at, source, ota, kind, reservation_no, extracted_json, check_result_json, read_by, masked_body, expires_at)
-       VALUES (?, 'paste', ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      `INSERT INTO booking_emails (received_at, source, ota, kind, reservation_no, extracted_json, check_result_json, read_by, masked_body, expires_at,
+         sender_domain, auth_pass, message_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
     )
     .bind(
       new Date(nowMs).toISOString(),
+      source === "email" ? "email" : "paste",
       fields.ota,
       fields.kind,
       fields.reservation_no,
@@ -638,6 +646,9 @@ export async function intakeBookingEmail({ client, db, subject, body, today, now
       readBy,
       `件名：${masked.subject}\n\n${masked.body}`,
       new Date(nowMs + KEEP_DAYS * 86400_000).toISOString(),
+      senderDomain,
+      authPass === null ? null : authPass ? 1 : 0,
+      messageKey,
     )
     .first();
   return viewRow(db, row);

@@ -42,6 +42,11 @@
     <section id="panel-home" class="panel" aria-labelledby="home-title">
       <h2 class="h2" id="home-title">きょうの仕事をえらぶ</h2>
       <ul class="menu">
+        <li><a class="row row-decisions" href="#decisions">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+          <span class="row-text"><span class="row-name">決裁箱</span><span class="row-fact" id="fact-decisions">チームが見回って、確認してほしいものを置きます</span></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </a></li>
         <li><a class="row" href="#kpi">
           <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
           <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact" id="fact-kpi">売上と手取りを数えます</span></span>
@@ -85,6 +90,7 @@
       </ul>
     </section>
 
+    <section id="panel-decisions" class="panel" aria-label="決裁箱" hidden></section>
     <section id="panel-kpi" class="panel" aria-label="今月の数字" hidden></section>
     <section id="panel-tax" class="panel" aria-label="宿泊税" hidden></section>
     <section id="panel-minpaku" class="panel" aria-label="民泊の手続き" hidden></section>

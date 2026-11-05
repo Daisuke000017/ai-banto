@@ -13,6 +13,10 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  // 朝の見回り（M19）：毎朝7時（日本時間＝UTCの22時）
+  "triggers": {
+    "crons": ["0 22 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

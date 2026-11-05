@@ -1987,11 +1987,196 @@ function evalExamples(d) {
   return el("article", { cls: "card" }, [el("h3", { cls: "card-title", text: "監査役が差し戻した例" }), body]);
 }
 
+// ---- 決裁箱（M20）----
+// チームが自分から見回って（朝7時・メールが届いたとき・ボタン）、オーナーの確認が要るものだけをここに置く。
+// OK するまで、台帳も案内も変わらない。題・数字・日付はプログラムが作ったもの（AI の文ではない）
+
+const LEVEL = { urgent: ["急ぎ", "danger"], warn: ["確かめて", "warn"], info: ["お知らせ", "ok"] };
+const TRIGGER_JA = { cron: "毎朝の見回り", button: "ボタンで見回り", email: "メールが届いて見回り" };
+const OK_LABEL = { booking_email: "OK（台帳に入れる）", arrival_draft: "OK（確認済みにする）" };
+const PATROL_STEPS = [
+  [["banto"], "番頭が予約・メール・締切を見回っています"],
+  [["shukuhaku"], "宿泊担当が、近い到着の案内を下書きしています"],
+  [["kansa"], "監査役とプログラムが、下書きを確かめています"],
+];
+const dx = { busy: false, openKey: "", timer: null };
+
+// サーバーの時刻（世界標準時）を日本時間の「時:分」に
+function jstTime(utc) {
+  const t = Date.parse(`${String(utc ?? "").replace(" ", "T")}Z`);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t + 9 * 3600000);
+  return `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function patrolText(last) {
+  if (!last) return "まだ見回っていません";
+  return `最後の見回り ${jstTime(last.finished_at)}（${TRIGGER_JA[last.trigger] ?? "見回り"}）`;
+}
+
+async function showDecisions() {
+  const p = $("panel-decisions");
+  if (!p.childElementCount) p.replaceChildren(loading("決裁箱を読んでいます"));
+  try {
+    renderDecisions(await api("/api/decisions"));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showDecisions));
+  }
+  watchDecisions();
+}
+
+function renderDecisions(d, note = null) {
+  const p = $("panel-decisions");
+  const msg = el("div", { attrs: { id: "dx-msg", "aria-live": "polite" } }, note);
+  const urgent = d.open.filter((x) => x.level === "urgent").length;
+  const head = el("article", { cls: "card" }, [
+    el("div", { cls: "card-head" }, [
+      el("h2", { text: "決裁箱" }),
+      el("span", { cls: `pill ${d.open.length ? (urgent ? "danger" : "warn") : "ok"}`, text: d.open.length ? `確認待ち ${d.open.length}件` : "確認待ちなし" }),
+    ]),
+    el("p", { cls: "lead", text: "チームが自分から見回って、確認してほしいものだけをここに置きます。OKするまで、台帳も案内も変わりません" }),
+    el("p", { cls: "dx-last", text: patrolText(d.last_patrol) }),
+    el("div", { cls: "btns" }, [btn("いま見回る", (e) => patrolNow(e.currentTarget), "btn primary")]),
+    msg,
+  ]);
+  const list = d.open.length
+    ? d.open.map(decisionCard)
+    : [el("article", { cls: "card" }, [el("p", { cls: "state", text: "いま、確認待ちはありません。新しいことがあれば、チームがここに置きます" })])];
+  p.replaceChildren(head, ...list, decidedCard(d.done));
+  dx.openKey = d.open.map((x) => `${x.id}:${x.can_ok}`).join(",");
+}
+
+function decisionCard(d) {
+  const [lv, cls] = LEVEL[d.level] ?? LEVEL.info;
+  const msg = el("div", { attrs: { "aria-live": "polite" } });
+  const ok = btn(OK_LABEL[d.kind] ?? "OK（見ました）", () => decide(d, msg), "btn");
+  if (!d.can_ok) {
+    ok.disabled = true;
+    ok.dataset.lock = "1";
+  }
+  const fixLabel = d.kind in OK_LABEL ? `直す（${TITLE[d.link] ?? "画面"}へ）` : `${TITLE[d.link] ?? "画面"}を見る`;
+  return el("article", { cls: `card dx dx-${d.level}` }, [
+    el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv })]),
+    el("h3", { cls: "card-title dx-title", text: d.title }),
+    el("dl", { cls: "kv" }, d.facts.flatMap((f) => [el("dt", { text: f.label }), el("dd", { text: f.value })])),
+    d.can_ok ? null : el("p", { cls: "notice warn", text: "番頭が決められないことがあるので、まだOKできません。「直す」から直してください" }),
+    el("div", { cls: "btns" }, [ok, d.link in SHOW ? btn(fixLabel, () => openFrom(d), "btn") : null]),
+    msg,
+  ]);
+}
+
+function decidedCard(done) {
+  if (!done.length) return null;
+  return el("article", { cls: "card" }, [
+    el("h3", { cls: "card-title", text: "さっき決めたもの" }),
+    el("ul", { cls: "dx-done" }, done.slice(0, 5).map((x) =>
+      el("li", {}, [el("span", { cls: "pill ok", text: x.status === "ok" ? "OK" : "済み" }), " ", el("span", { text: x.title })]),
+    )),
+  ]);
+}
+
+// 「直す」：その画面を開く。到着前案内は、その予約を選んだ状態でゲスト連絡を開く
+function openFrom(d) {
+  if (d.kind === "arrival_draft") {
+    const res = d.facts.find((f) => f.label === "予約");
+    if (res) state.selectedRes = res.value;
+  }
+  state.loaded[d.link] = false;
+  go(d.link);
+}
+
+function lockDecisions(on) {
+  dx.busy = on;
+  for (const b of $("panel-decisions").querySelectorAll(".btn")) b.disabled = on || b.dataset.lock === "1";
+}
+
+async function decide(d, msg) {
+  lockDecisions(true);
+  msg.replaceChildren(loading(d.kind === "booking_email" ? "台帳に入れています" : "記録しています"));
+  try {
+    const r = await api(`/api/decisions/${d.id}/ok`, { method: "POST", body: {} });
+    state.loaded = {};
+    toast(d.kind === "booking_email" ? "台帳に入れました" : "OKを記録しました");
+    dx.busy = false;
+    if (r.follow_up_patrol) {
+      renderDecisions(r, loading("番頭が続けて見回っています。近い到着なら、案内の下書きをここに置きます"));
+      followUp(r.last_patrol?.id ?? 0);
+    } else {
+      renderDecisions(r);
+    }
+  } catch (err) {
+    lockDecisions(false);
+    msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+}
+
+// 予約を台帳に入れたあとの見回り（サーバーが裏で動かす）が終わるのを、少しずつ待つ（最大45秒）
+async function followUp(prevId) {
+  dx.busy = true;
+  teamWorking(null, PATROL_STEPS);
+  let d = null;
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      d = await api("/api/decisions");
+    } catch {
+      d = null;
+    }
+    if (d && (d.last_patrol?.id ?? 0) > prevId) break;
+  }
+  dx.busy = false;
+  teamDone("見回りが終わりました");
+  if (view !== "decisions") return;
+  if (d) renderDecisions(d);
+  else showDecisions();
+}
+
+async function patrolNow(b) {
+  lockDecisions(true);
+  const msg = $("dx-msg");
+  teamWorking((note) => msg.replaceChildren(loading(`${note}（10〜30秒ほど）`)), PATROL_STEPS);
+  try {
+    const r = await api("/api/patrol", { method: "POST", body: {} });
+    teamDone("見回りが終わりました");
+    dx.busy = false;
+    const n = r.patrol?.new_items ?? 0;
+    renderDecisions(r, el("p", { cls: `notice ${n ? "warn" : "info"}`, text: n ? `見回りました。新しく${n}件、確認してほしいものがあります` : "見回りました。新しいことはありませんでした" }));
+  } catch (err) {
+    teamDone("見回りできませんでした");
+    lockDecisions(false);
+    msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
+}
+
+// 決裁箱を開いている間は、15秒ごとに読み直す（メールが届いたら、そのまま箱に出る）。中身が変わったときだけ描き直す
+function watchDecisions() {
+  if (dx.timer) return;
+  dx.timer = setInterval(async () => {
+    if (view !== "decisions") {
+      clearInterval(dx.timer);
+      dx.timer = null;
+      return;
+    }
+    if (dx.busy || document.hidden) return;
+    try {
+      const d = await api("/api/decisions");
+      const key = d.open.map((x) => `${x.id}:${x.can_ok}`).join(",");
+      if (key !== dx.openKey && !dx.busy && view === "decisions") {
+        const added = d.open.length - dx.openKey.split(",").filter(Boolean).length;
+        renderDecisions(d, added > 0 ? el("p", { cls: "notice warn", text: `新しく${added}件、届きました` }) : null);
+      }
+    } catch {
+      // 読めなかったときは次の回にまかせる
+    }
+  }, 15000);
+}
+
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { kpi: showKpi, tax: showTax, minpaku: showMinpaku, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
-const TITLE = { kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
+const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
+const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -2004,6 +2189,11 @@ function show(name) {
   window.scrollTo(0, 0);
   if (name === "home") {
     loadFacts();
+    return;
+  }
+  // 決裁箱は開くたびに読み直す（見回りやメールで中身が変わるため）
+  if (name === "decisions") {
+    showDecisions();
     return;
   }
   if (!state.loaded[name]) {
@@ -2023,6 +2213,12 @@ async function loadFacts() {
   const mm = shortMonth(m);
   const set = (id, parts) => $(id).replaceChildren(...parts);
   await Promise.allSettled([
+    api("/api/decisions").then((d) => {
+      const urgent = d.open.filter((x) => x.level === "urgent").length;
+      set("fact-decisions", d.open.length
+        ? ["確認待ち ", el("b", { text: `${d.open.length}件` }), urgent ? `（急ぎ${urgent}件）` : "", `　${patrolText(d.last_patrol)}`]
+        : ["確認待ちはありません", `　${patrolText(d.last_patrol)}`]);
+    }),
     api(`/api/kpis?month=${m}`).then((d) => set("fact-kpi", [`${mm}の売上 `, el("b", { text: `${yen(d.total)}円` })])),
     // 宿泊税は申告する月（先月分）を出す。宿泊税の画面も先月から開く
     api(`/api/tax?month=${state.taxMonth}`).then((d) =>
