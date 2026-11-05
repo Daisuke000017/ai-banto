@@ -623,7 +623,6 @@ body.drill::after {
 .cal-card .nums { margin-bottom: var(--s4); }
 .cal-legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 0 var(--s3); padding: 0; font-size: 15px; color: var(--ink-sub); }
 .cal-legend li { display: flex; align-items: center; gap: var(--s1); }
-.cal-legend .mk { width: auto; max-width: none; min-width: 32px; padding: 0 6px; }
 .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-wd { text-align: center; font-size: 15px; color: var(--ink-sub); padding-bottom: 2px; }
 .cal-day {
@@ -646,23 +645,6 @@ body.drill::after {
 .cal-day[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: 0; border-color: var(--action); }
 .cal-day:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
 .cal-day.is-overlap { border-color: var(--danger); }
-.mk {
-  display: block;
-  width: 100%;
-  max-width: 40px;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.4;
-  text-align: center;
-  border-radius: 999px;
-  background: var(--chart-1);
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-}
-.mk.unknown { background: var(--warn-bg); color: var(--warn); }
-.mk.out { background: transparent; color: var(--ink-sub); outline: 1px dashed var(--ink-sub); outline-offset: -1px; }
-.mk.over { background: var(--danger-bg); color: var(--danger); }
 .cal-detail { margin-top: var(--s4); }
 .cal-detail-h { font-size: 20px; margin: 0 0 var(--s2); }
 .cal-rooms { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
@@ -680,5 +662,118 @@ body.drill::after {
   .cal-card { padding-left: var(--s2); padding-right: var(--s2); }
   .cal { gap: 3px; }
   .cal-day { min-height: 60px; padding: 4px 1px; }
-  .mk { letter-spacing: -0.04em; }
 }
+
+/* 見かたの切り替え（帯／月） */
+.cal-views { display: flex; gap: var(--s2); margin: 0 0 var(--s3); }
+.cal-views .btn[aria-pressed="true"] { background: var(--action); border-color: var(--action); color: #fff; }
+
+/* 見かたの説明の見本 */
+.sw { display: inline-block; flex: none; width: 32px; height: 14px; border-radius: 4px; background: var(--chart-1); }
+.sw.bar { border-radius: 8px 3px 3px 8px; }
+.sw.unknown { background: var(--warn-bg); outline: 2px solid var(--warn); outline-offset: -2px; }
+.sw.over { background: var(--danger-bg); outline: 2px solid var(--danger); outline-offset: -2px; }
+.sw.clean { width: 14px; background: transparent; border: 2px solid var(--ink-sub); border-radius: 3px; }
+.sw.clean.turn { background: var(--warn); border-color: var(--warn); }
+.sw.lane { height: 6px; border-radius: 3px; }
+.sw.lane.b { background: var(--chart-2); }
+
+/* 帯で見る：ラベル1列＋1日を午前・午後の2列。位置はプログラムが gridColumn で入れる（CSSOM。style="" の文字は書かない） */
+/* 1日の幅：スマホ・タブレットは40px（横にずらす）、広い画面は26px以上で1か月がほぼ入る */
+.tl { --lab: 3.6em; --half: 20px; }
+@media (min-width: 900px) {
+  .tl { --half: 13px; }
+}
+.tl-hint { display: none; margin: 0 0 var(--s1); font-size: 15px; color: var(--ink-sub); }
+.tl-hint::before { content: "← "; }
+.tl-hint::after { content: " →"; }
+.tl.can-scroll .tl-hint { display: block; }
+.tl-scroll { position: relative; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--s2); }
+.tl-scroll:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
+.tl-grid { display: grid; grid-auto-rows: minmax(34px, auto); row-gap: 4px; align-items: center; }
+/* 表の幅そのものを1か月ぶんにする（はみ出しにすると、左の列が途中で止まらなくなる） */
+.tl-grid.n28 { grid-template-columns: var(--lab) repeat(56, minmax(var(--half), 1fr)); min-width: calc(var(--lab) + 56 * var(--half)); }
+.tl-grid.n29 { grid-template-columns: var(--lab) repeat(58, minmax(var(--half), 1fr)); min-width: calc(var(--lab) + 58 * var(--half)); }
+.tl-grid.n30 { grid-template-columns: var(--lab) repeat(60, minmax(var(--half), 1fr)); min-width: calc(var(--lab) + 60 * var(--half)); }
+.tl-grid.n31 { grid-template-columns: var(--lab) repeat(62, minmax(var(--half), 1fr)); min-width: calc(var(--lab) + 62 * var(--half)); }
+/* 左の列（部屋の名前）は横にずらしても止まる。下じきで帯や土日の色を隠す */
+.tl-labbg { position: sticky; left: 0; z-index: 3; align-self: stretch; margin-bottom: -4px; background: var(--surface); box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25); }
+.tl-room { position: sticky; left: 0; }
+.tl-bg { align-self: stretch; border-left: 1px solid var(--line); margin-bottom: -4px; }
+.tl-bg.is-sun, .tl-bg.is-sat { background: var(--soft); }
+.tl-bg.is-today { background: var(--glow-bg); }
+.tl-day {
+  z-index: 1;
+  align-self: stretch;
+  min-width: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.tl-day .n { font-size: 16px; font-weight: 700; min-width: 24px; text-align: center; border-radius: 999px; }
+.tl-day .w { font-size: 15px; color: var(--ink-sub); }
+.tl-day.is-sun .w { color: var(--danger); }
+.tl-day.is-sat .w { color: var(--action); }
+.tl-day.is-today .n { background: var(--ink); color: #fff; }
+.tl-day[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: -3px; }
+.tl-room { z-index: 4; font-size: 15px; font-weight: 700; line-height: 1.3; padding-right: var(--s1); }
+.tl-room.is-warn { color: var(--warn); }
+.tl-bar {
+  z-index: 2;
+  min-width: 0;
+  height: 30px;
+  margin: 0 1px;
+  border: 0;
+  border-radius: 15px 4px 4px 15px;
+  background: var(--chart-1);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 30px;
+  padding: 0 6px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  cursor: pointer;
+}
+.tl-bar.room-b { background: var(--chart-2); color: var(--ink); }
+.tl-bar.unknown { background: var(--warn-bg); color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); }
+.tl-bar.over { background: var(--danger-bg); color: var(--danger); box-shadow: inset 0 0 0 2px var(--danger); }
+.tl-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+.tl-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+.tl-bar[aria-pressed="true"] { outline: 3px solid var(--glow); outline-offset: 1px; }
+.tl-bar:focus-visible, .tl-day:focus-visible, .tl-clean:focus-visible { outline: 3px solid var(--glow); outline-offset: 1px; }
+.tl-clean {
+  z-index: 2;
+  justify-self: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--ink-sub);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.tl-clean.turn { background: var(--warn); border-color: var(--warn); }
+.tl-clean[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: 2px; }
+
+/* 月で見る（文字なし）：1日を午前・午後に分けた細い線を部屋ごとに。清掃の日は四角い印 */
+.cal-min .cal-day { min-height: 58px; justify-content: flex-start; padding: 4px 0 6px; }
+.mn-lanes { display: grid; gap: 3px; width: 100%; }
+.mn-lane { display: grid; grid-template-columns: 1fr 1fr; height: 6px; }
+.mn-lane .h.on { background: var(--chart-1); }
+.mn-lane.b .h.on { background: var(--chart-2); }
+.mn-lane.unknown .h.on { background: var(--warn); }
+.mn-lane.over .h.on { background: var(--danger); }
+.mn-clean { width: 12px; height: 12px; margin-top: auto; border: 2px solid var(--ink-sub); border-radius: 3px; }
+.mn-clean.turn { background: var(--warn); border-color: var(--warn); }

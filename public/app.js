@@ -794,9 +794,40 @@ function calMonths() {
   return el("div", { cls: "months" }, [back, label, fwd]);
 }
 
+// 見かたは2つ：「帯」（部屋ごとの横の帯。入る日の午後から、出る日の午前まで）と「月」（7列の表。文字なしで泊まりと清掃の日だけ）
+const CAL_VIEWS = [
+  ["bar", "帯で見る"],
+  ["month", "月で見る"],
+];
+const dayNo = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
+const sameRoom = (a, b) => (a ?? null) === (b ?? null);
+
+// その月に関わる予約（月の1日に出ていく予約も入れる）。同じ部屋で重なる予約は段を分ける
+function calBookings(d) {
+  const seen = new Map();
+  for (const day of d.days) for (const r of [...day.stays, ...day.departures]) if (!seen.has(r.reservation_id)) seen.set(r.reservation_id, r);
+  const list = [...seen.values()].sort((a, b) => a.checkin_date.localeCompare(b.checkin_date) || String(a.reservation_id).localeCompare(String(b.reservation_id)));
+  const lanes = new Map();
+  return list.map((r) => {
+    const key = r.room ?? "none";
+    const ends = lanes.get(key) ?? [];
+    let lane = ends.findIndex((end) => end <= r.checkin_date);
+    if (lane < 0) lane = ends.push("") - 1;
+    ends[lane] = r.checkout_date;
+    lanes.set(key, ends);
+    const over = list.some((o) => o !== r && sameRoom(o.room, r.room) && o.checkin_date < r.checkout_date && r.checkin_date < o.checkout_date);
+    const turn = list.some((o) => o !== r && r.room && o.room === r.room && o.checkin_date === r.checkout_date);
+    return { r, lane, over, turn, key, lanes: () => lanes.get(key).length };
+  });
+}
+
 function calCard(d) {
   const s = d.summary;
-  const hasUnknown = d.days.some((x) => x.stays.some((st) => !st.room) || x.departures.some((r) => !r.room));
+  const view = state.calView === "month" ? "month" : "bar";
+  const books = calBookings(d);
+  const hasUnknown = books.some((b) => !b.r.room);
+  const hasOver = books.some((b) => b.over);
+  const hasTurn = books.some((b) => b.turn);
   const card = el("article", { cls: "card cal-card" }, [
     el("dl", { cls: "nums" }, [
       num("部屋A", s.nights.A, "泊"),
@@ -810,37 +841,49 @@ function calCard(d) {
     const where = d.overlaps.map((o) => `${jpDate(o.date, false)}（${o.rooms.map((r) => ROOM[r]).join("・")}）`).join("、");
     card.append(el("p", { cls: "notice danger", text: `同じ部屋に2つの予約が重なっている夜があります：${where}。台帳を確かめてください` }));
   }
-  card.append(
-    el("ul", { cls: "cal-legend", attrs: { "aria-label": "表の見かた" } }, [
-      el("li", {}, [el("span", { cls: "mk", text: "A" }), "部屋Aに泊まり"]),
-      el("li", {}, [el("span", { cls: "mk", text: "B" }), "部屋Bに泊まり"]),
-      hasUnknown ? el("li", {}, [el("span", { cls: "mk unknown", text: "未定" }), "部屋が決まっていない予約"]) : null,
-      el("li", {}, [el("span", { cls: "mk out", text: "清掃" }), "チェックアウトの日"]),
-    ]),
-  );
 
+  // 見かたの切り替え（押すと、このカードだけ描き直す）
+  const views = el(
+    "div",
+    { cls: "cal-views", attrs: { role: "group", "aria-label": "見かたの切り替え" } },
+    CAL_VIEWS.map(([v, label]) => {
+      const b = btn(label, () => {
+        if (v === view) return;
+        state.calView = v;
+        const next = calCard(d);
+        card.replaceWith(next);
+        next.querySelector('.cal-views [aria-pressed="true"]')?.focus();
+      }, "btn small");
+      b.setAttribute("aria-pressed", String(v === view));
+      return b;
+    }),
+  );
+  card.append(views, calLegend(view, { hasUnknown, hasOver, hasTurn }));
+
+  // 押したもの（日 or 予約）の中身を下に出す
   const detail = el("div", { cls: "cal-detail", attrs: { "aria-live": "polite" } });
-  const grid = el("div", { cls: "cal", attrs: { role: "group", "aria-label": `${jpMonth(d.month)}の宿泊カレンダー。日を押すと、その日の部屋の様子が下に出ます` } });
-  for (const w of WD) grid.append(el("span", { cls: "cal-wd", text: w, attrs: { "aria-hidden": "true" } }));
-  for (let i = 0; i < d.first_weekday; i++) grid.append(el("span", { cls: "cal-blank", attrs: { "aria-hidden": "true" } }));
-  const cells = [];
-  const select = (day) => {
-    state.calDay = day.date;
-    for (const [b, x] of cells) b.setAttribute("aria-pressed", String(x === day));
-    detail.replaceChildren(...calDetail(d, day));
+  const pickOf = () => (state.calStay && books.some((b) => b.r.reservation_id === state.calStay) ? `s:${state.calStay}` : `d:${state.calDay}`);
+  const show = () => {
+    const pick = pickOf();
+    for (const b of card.querySelectorAll("[data-pick]")) b.setAttribute("aria-pressed", String(b.dataset.pick === pick));
+    if (pick.startsWith("s:")) {
+      const b = books.find((x) => x.r.reservation_id === state.calStay);
+      detail.replaceChildren(...calStayDetail(d, b));
+    } else {
+      detail.replaceChildren(...calDetail(d, d.days.find((x) => x.date === state.calDay)));
+    }
   };
-  for (const day of d.days) {
-    const cls = ["cal-day", day.is_today ? "is-today" : "", day.overlap_rooms.length ? "is-overlap" : ""].filter(Boolean).join(" ");
-    const b = el(
-      "button",
-      { cls, attrs: { type: "button", "aria-label": calDayLabel(day), "aria-pressed": String(day.date === state.calDay), "aria-current": day.is_today ? "date" : null }, on: { click: () => select(day) } },
-      [el("span", { cls: "n", text: Number(day.date.slice(8)) }), ...calMarks(day)],
-    );
-    cells.push([b, day]);
-    grid.append(b);
-  }
-  card.append(grid, detail);
-  detail.replaceChildren(...calDetail(d, d.days.find((x) => x.date === state.calDay)));
+  const pickDay = (day) => () => {
+    state.calDay = day.date;
+    state.calStay = null;
+    show();
+  };
+  const pickStay = (b) => () => {
+    state.calStay = b.r.reservation_id;
+    show();
+  };
+  card.append(view === "bar" ? calTimeline(d, books, pickDay, pickStay) : calMonthGrid(d, pickDay, hasUnknown), detail);
+  show();
   card.append(
     el("details", {}, [el("summary", { text: "数え方" }), el("p", { cls: "notice info", text: d.how })]),
     el("p", { cls: "notice info", text: "この画面は見るだけです。予約を入れる・変える、清掃の担当を決めることはしません" }),
@@ -848,16 +891,195 @@ function calCard(d) {
   return card;
 }
 
-// 1日のます目の印：泊まっている部屋（A・B・未定）と、チェックアウト（清掃）
-function calMarks(day) {
-  const marks = [];
-  for (const room of ["A", "B"]) {
-    const n = day.stays.filter((s) => s.room === room).length;
-    if (n) marks.push(el("span", { cls: n > 1 ? "mk over" : "mk", text: n > 1 ? `${room}×${n}` : room, attrs: { "aria-hidden": "true" } }));
+// 見かたの説明（色だけで伝えない。言葉を添える）
+function calLegend(view, f) {
+  const sw = (cls) => el("span", { cls: `sw ${cls}`, attrs: { "aria-hidden": "true" } });
+  const items =
+    view === "bar"
+      ? [
+          el("li", {}, [sw("bar"), "泊まり（左はしが入る日の午後、右はしが出る日の午前）"]),
+          f.hasUnknown ? el("li", {}, [sw("bar unknown"), "部屋が決まっていない予約"]) : null,
+          f.hasOver ? el("li", {}, [sw("bar over"), "同じ部屋で重なっている予約"]) : null,
+          el("li", {}, [sw("clean"), "清掃の日（チェックアウトの日）"]),
+          f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替え（同じ日に次の人が入る）"]) : null,
+        ]
+      : [
+          el("li", {}, [sw("lane a"), "上の線：部屋Aの泊まり"]),
+          el("li", {}, [sw("lane b"), "下の線：部屋Bの泊まり"]),
+          f.hasUnknown ? el("li", {}, [sw("lane unknown"), "部屋未定の泊まり"]) : null,
+          el("li", {}, [sw("clean"), "清掃の日"]),
+          f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替えの日"]) : null,
+        ];
+  return el("ul", { cls: "cal-legend", attrs: { "aria-label": "見かた" } }, items);
+}
+
+// 帯で見る：部屋ごとの行 × 日（1日を午前・午後の2つに分ける）。いつも1か月を横1列。入りきらない画面では横にずらす（部屋の名前の列は左に止まる）
+function calTimeline(d, books, pickDay, pickStay) {
+  const first = dayNo(d.days[0].date);
+  const last = dayNo(d.days[d.days.length - 1].date);
+  const scroller = el(
+    "div",
+    { cls: "tl-scroll", attrs: { role: "region", tabindex: "0", "aria-label": `${jpMonth(d.month)}の宿泊の帯。横にずらせます。帯を押すと予約の中身、日付を押すとその日の様子が下に出ます` } },
+    [calBlock(d, books, first, d.days.length, first, last, pickDay, pickStay)],
+  );
+  const hint = el("p", { cls: "tl-hint", text: "横にずらすと、ほかの日も見られます", attrs: { "aria-hidden": "true" } });
+  const wrap = el("div", { cls: "tl" }, [hint, scroller]);
+  // 画面に出たあと：入りきらないときだけ案内を出し、選んでいる日（ふだんは今日）が左のほうに来るようにずらす
+  let tries = 0;
+  const settle = () => {
+    if (!scroller.isConnected) {
+      if (++tries < 30) setTimeout(settle, 30);
+      return;
+    }
+    if (scroller.scrollWidth <= scroller.clientWidth + 1) return;
+    wrap.classList.add("can-scroll");
+    const day = scroller.querySelector(`.tl-day[data-pick="d:${state.calDay}"]`) ?? scroller.querySelector('.tl-day[aria-current="date"]');
+    const lab = scroller.querySelector(".tl-labbg");
+    if (day && lab) scroller.scrollLeft = Math.max(0, day.offsetLeft - lab.offsetWidth - day.offsetWidth);
+  };
+  setTimeout(settle, 0);
+  return wrap;
+}
+
+// 1段ぶん（start の日から n 日）。first〜last はその月の範囲（月の外は描かない）
+function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
+  const byNo = new Map(d.days.map((x) => [dayNo(x.date), x]));
+  const lo = Math.max(start, first);
+  const hi = Math.min(start + n - 1, last);
+  const rooms = [
+    ["A", "部屋A"],
+    ["B", "部屋B"],
+  ];
+  if (books.some((b) => !b.r.room)) rooms.push(["none", "未定"]);
+  const laneCount = (key) => Math.max(1, ...books.filter((b) => b.key === key).map((b) => b.lanes()));
+  const rowOf = new Map();
+  let row = 2;
+  for (const [key] of rooms) {
+    rowOf.set(key, row);
+    row += laneCount(key);
   }
-  if (day.stays.some((s) => !s.room)) marks.push(el("span", { cls: "mk unknown", text: "未定", attrs: { "aria-hidden": "true" } }));
-  if (day.departures.length) marks.push(el("span", { cls: "mk out", text: "清掃", attrs: { "aria-hidden": "true" } }));
-  return marks;
+  const cleanRow = row;
+  const grid = el("div", { cls: `tl-grid n${n}` });
+  const put = (node, col, r) => {
+    node.style.gridColumn = col;
+    node.style.gridRow = r;
+    grid.append(node);
+    return node;
+  };
+  const colOf = (no) => 2 + 2 * (no - start);
+
+  // 左の列の下じき（横にずらしたとき、帯や土日の色がこの下を通る）
+  put(el("span", { cls: "tl-labbg", attrs: { "aria-hidden": "true" } }), "1", `1 / ${cleanRow + 1}`);
+  // 日付の見出しと、背景（土日・今日）
+  for (let no = start; no < start + n; no++) {
+    const day = byNo.get(no);
+    if (!day) continue;
+    const wd = new Date(no * 86400000).getUTCDay();
+    const tone = [wd === 0 ? "is-sun" : wd === 6 ? "is-sat" : "", day.is_today ? "is-today" : ""].filter(Boolean).join(" ");
+    put(el("span", { cls: `tl-bg ${tone}`, attrs: { "aria-hidden": "true" } }), `${colOf(no)} / span 2`, `1 / ${cleanRow + 1}`);
+    put(
+      el(
+        "button",
+        {
+          cls: `tl-day ${tone}`,
+          attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": calDayLabel(day), "aria-current": day.is_today ? "date" : null },
+          on: { click: pickDay(day) },
+        },
+        [el("span", { cls: "n", text: Number(day.date.slice(8)) }), el("span", { cls: "w", text: WD[wd] })],
+      ),
+      `${colOf(no)} / span 2`,
+      "1",
+    );
+  }
+  // 部屋の名前（行の見出し）
+  for (const [key, label] of rooms) put(el("span", { cls: `tl-room${key === "none" ? " is-warn" : ""}`, text: label }), "1", `${rowOf.get(key)} / span ${laneCount(key)}`);
+  put(el("span", { cls: "tl-room", text: "清掃" }), "1", String(cleanRow));
+
+  // 泊まりの帯：入る日の午後から、出る日の午前まで
+  for (const b of books) {
+    const ci = dayNo(b.r.checkin_date);
+    const co = dayNo(b.r.checkout_date);
+    if (co < lo || ci > hi) continue;
+    const s = ci >= lo ? colOf(ci) + 1 : colOf(lo);
+    const e = co <= hi ? colOf(co) + 1 : colOf(hi) + 2;
+    const cls = ["tl-bar", b.r.room === "B" ? "room-b" : "", !b.r.room ? "unknown" : "", b.over ? "over" : "", ci < lo ? "cont-l" : "", co > hi ? "cont-r" : ""].filter(Boolean).join(" ");
+    const label = `${roomName(b.r.room)}：${OTA[b.r.ota] ?? b.r.ota ?? "予約"}、${jpDate(b.r.checkin_date, false)}から${jpDate(b.r.checkout_date, false)}まで${b.r.nights}泊（${PEOPLE(b.r)}）${b.over ? "。重なりあり" : ""}`;
+    // 月の境目で切れた短い切れ端（1日半より短い）は文字を出さない。読み上げ用の説明は残す
+    put(
+      el("button", { cls, text: e - s >= 3 ? `${b.r.nights}泊` : "", attrs: { type: "button", "data-pick": `s:${b.r.reservation_id}`, "aria-label": label }, on: { click: pickStay(b) } }),
+      `${s} / ${e}`,
+      String(rowOf.get(b.key) + b.lane),
+    );
+  }
+  // 清掃の印：チェックアウトの日
+  for (let no = lo; no <= hi; no++) {
+    const day = byNo.get(no);
+    if (!day?.departures.length) continue;
+    const turn = day.departures.some((r) => r.room && day.stays.some((st) => st.arrives && st.room === r.room));
+    put(
+      el("button", {
+        cls: `tl-clean${turn ? " turn" : ""}`,
+        attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": `${jpDate(day.date)}：清掃${turn ? "（入れ替え）" : ""}。チェックアウト${day.departures.length}件` },
+        on: { click: pickDay(day) },
+      }),
+      `${colOf(no)} / span 2`,
+      String(cleanRow),
+    );
+  }
+  return grid;
+}
+
+// 月で見る：7列の表。文字は日付だけ。線＝泊まった夜（午前・午後に分ける）、四角い印＝清掃の日
+function calMonthGrid(d, pickDay, hasUnknown) {
+  const grid = el("div", { cls: "cal cal-min", attrs: { role: "group", "aria-label": `${jpMonth(d.month)}の宿泊カレンダー。日を押すと、その日の部屋の様子が下に出ます` } });
+  for (const w of WD) grid.append(el("span", { cls: "cal-wd", text: w, attrs: { "aria-hidden": "true" } }));
+  for (let i = 0; i < d.first_weekday; i++) grid.append(el("span", { cls: "cal-blank", attrs: { "aria-hidden": "true" } }));
+  const lanes = hasUnknown ? ["A", "B", null] : ["A", "B"];
+  for (const day of d.days) {
+    const lane = (room) => {
+      const am = day.departures.some((r) => sameRoom(r.room, room)) || day.stays.some((st) => sameRoom(st.room, room) && !st.arrives);
+      const pm = day.stays.filter((st) => sameRoom(st.room, room)).length;
+      const cls = ["mn-lane", room === "A" ? "a" : room === "B" ? "b" : "unknown", pm > 1 ? "over" : ""].filter(Boolean).join(" ");
+      return el("span", { cls, attrs: { "aria-hidden": "true" } }, [el("span", { cls: am ? "h on" : "h" }), el("span", { cls: pm ? "h on" : "h" })]);
+    };
+    const turn = day.departures.some((r) => r.room && day.stays.some((st) => st.arrives && st.room === r.room));
+    const cls = ["cal-day", day.is_today ? "is-today" : "", day.overlap_rooms.length ? "is-overlap" : ""].filter(Boolean).join(" ");
+    grid.append(
+      el(
+        "button",
+        { cls, attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": calDayLabel(day), "aria-current": day.is_today ? "date" : null }, on: { click: pickDay(day) } },
+        [
+          el("span", { cls: "n", text: Number(day.date.slice(8)) }),
+          el("span", { cls: "mn-lanes" }, lanes.map(lane)),
+          day.departures.length ? el("span", { cls: `mn-clean${turn ? " turn" : ""}`, attrs: { "aria-hidden": "true" } }) : null,
+        ],
+      ),
+    );
+  }
+  return grid;
+}
+
+// 下の欄：押した予約の中身（名前は出さない）
+function calStayDetail(d, b) {
+  const { r } = b;
+  const w = d.window;
+  const lines = [
+    el("p", {}, [el("span", { cls: "pill ok", text: "チェックイン" }), `${jpDate(r.checkin_date)} ${w.checkin}から`]),
+    el("p", {}, [el("span", { cls: "pill", text: "チェックアウト" }), `${jpDate(r.checkout_date)} ${w.checkout}まで`]),
+    el("p", { text: `${r.nights}泊・${PEOPLE(r)}` }),
+    b.turn
+      ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `${jpDate(r.checkout_date, false)}の${w.checkout}〜${w.checkin}の間に清掃（同じ日に次の人が入ります）`])
+      : el("p", { cls: "cal-sub", text: `清掃：${jpDate(r.checkout_date, false)}の${w.checkout}以降` }),
+    !r.room ? el("p", { cls: "notice warn", text: "部屋が決まっていない予約です。台帳で部屋を確かめてください" }) : null,
+    b.over ? el("p", { cls: "notice danger", text: `${roomName(r.room)}で別の予約と重なっています。台帳を確かめてください` }) : null,
+  ];
+  const out = [
+    el("h3", { cls: "cal-detail-h", text: `${roomName(r.room)}・${OTA[r.ota] ?? r.ota ?? "予約"}` }),
+    el("ul", { cls: "cal-rooms" }, [el("li", { cls: "is-busy" }, lines)]),
+  ];
+  const n = daysFrom(d.today, r.checkout_date);
+  if (n >= 0 && n < 21) out.push(el("div", { cls: "btns" }, [btn("清掃が必要な日を開く", () => go("cleaning"), "btn small")]));
+  return out;
 }
 
 // 読み上げ用：その日の様子を言葉で
@@ -2427,6 +2649,8 @@ async function start() {
   state.kpiMonth = month;
   state.calMonth = month;
   state.calDay = null;
+  state.calStay = null;
+  state.calView = "bar";
   state.taxMonth = addMonths(month, -1);
   const curStart = Number(month.slice(5, 7)) % 2 === 1 ? addMonths(month, -1) : month;
   const prevStart = addMonths(curStart, -2);
