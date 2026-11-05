@@ -1,10 +1,12 @@
 // 定期報告（2か月ごと）を、民泊制度運営システムの「CSVで一括報告」に出すファイルとして書き出す。
-// 形は観光庁の「電子宿泊者名簿」ソフトが作る定期報告ファイルに合わせた
+// データの行の形は観光庁の「電子宿泊者名簿」ソフトが作る定期報告ファイルに合わせた
 // （同ソフトの操作説明書 v2.0〈2025-09〉の 図2-40 と、観光庁の定期報告のページ）：
-//   見出しの行なし・UTF-8・行の終わりは CRLF・1つの届出につき1行
+//   UTF-8・行の終わりは CRLF・1つの届出につき1行
 //   届出番号, 報告期間（例 2026_8-9）, 宿泊日数, 宿泊者数, 延べ宿泊者数, 国籍22列, 宿泊した日（yyyy/MM/dd を1日1列）
-// 注意：民泊制度運営システムの操作マニュアル v1.7（2023-03）4-2 には、見出しの行あり・「第…号」・
-//   「20××年度××月～××月」・日付を「;」でつなぐ、という古い形が載っている。こちらには合わせていない。
+// 1行目には見出しを付ける（デモで見て分かるように。2026-11-05 社長判断）。
+//   見出しは民泊制度運営システムの操作マニュアル v1.7（2023-03）4-2「1行目は項目名」に合わせた。
+//   公式ソフトのファイルは見出しなし・BOMなしなので、受け付けられるかは初回の提出で「正常件数」を見て確かめる。
+// 注意：同じマニュアル v1.7 の「第…号」「20××年度××月～××月」「日付を ; でつなぐ」には合わせていない。
 // AIは使わない。数はすべて counting.js の minpakuReport が数えたもの。
 import { periodMonths } from "./counting.js";
 
@@ -47,8 +49,12 @@ export function nationalityRow(nationality) {
   return NATIONALITY_COLUMNS.map(([c]) => cols[c]);
 }
 
+// 見出しの行（1行目）。名前は操作マニュアル v1.7 の表2-7 に合わせる。泊まった日は「宿泊日1, 宿泊日2…」
+const HEADER_FIXED = ["届出番号", "報告期間", "宿泊日数", "宿泊者数", "宿泊延べ人数"];
+const BOM = "﻿";
+
 /**
- * 提出用のCSV（1行）とファイル名をつくる。
+ * 提出用のCSV（見出し1行＋データ1行）とファイル名をつくる。
  * report は minpakuReport の結果（nights：期間内に泊まった夜の一覧 を含む）。
  * 届出番号が無い・国籍が分からない人がいるときは ReportCsvError（何を直せばよいかを書く）
  */
@@ -69,9 +75,11 @@ export function submissionCsv(report, notificationNo) {
   const { year, label } = periodLabel(report.period);
   const dates = [...(report.nights ?? [])].sort().map((d) => d.replaceAll("-", "/"));
   const row = [no, label, report.stay_days, report.guests, report.guest_nights, ...nat, ...dates];
+  const header = [...HEADER_FIXED, ...NATIONALITY_COLUMNS.map(([, name]) => name), ...dates.map((_, i) => `宿泊日${i + 1}`)];
   const [, m1, m2] = /_(\d+)-(\d+)$/.exec(label);
   return {
     filename: `${no}_${year}_${m1}-${m2}.csv`,
-    text: row.join(",") + "\r\n",
+    // 先頭の BOM は、Excel で開いたときに見出しの日本語が化けないようにするため
+    text: BOM + header.join(",") + "\r\n" + row.join(",") + "\r\n",
   };
 }

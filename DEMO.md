@@ -27,7 +27,7 @@ npm run db:reset
 npm run dev
 ```
 
-ブラウザで http://localhost:8787 を開きます。テストは `npm test`（268件）です。
+ブラウザで http://localhost:8787 を開きます。テストは `npm test`（270件）です。
 
 ---
 

@@ -39,16 +39,36 @@ test("期間の書き方：2026-08_09 → 2026_8-9。12月〜1月は始まりの
   assert.deepEqual(periodLabel("2026-12_01"), { year: 2026, label: "2026_12-1" });
 });
 
-test("提出用CSV：見出しなし・1行・CRLF。泊まった日は並べ替えて yyyy/MM/dd を1日1列", () => {
+// 提出用CSVの2行目（データの行）を列に分ける
+const dataCols = (text) => text.split("\r\n")[1].split(",");
+
+test("提出用CSV：見出し1行＋データ1行・CRLF。泊まった日は並べ替えて yyyy/MM/dd を1日1列", () => {
   const { filename, text } = submissionCsv(fake(), " M012345678 ");
   assert.equal(filename, "M012345678_2026_10-11.csv");
   assert.ok(text.endsWith("\r\n"));
-  assert.equal(text.split("\r\n").length, 2); // 1行＋最後の改行
-  const cols = text.trimEnd().split(",");
+  assert.equal(text.split("\r\n").length, 3); // 見出し＋1行＋最後の改行
+  const cols = dataCols(text);
   assert.equal(cols.length, 5 + 22 + 3);
   assert.deepEqual(cols.slice(0, 5), ["M012345678", "2026_10-11", "3", "4", "7"]);
   assert.deepEqual(cols.slice(27), ["2026/10/30", "2026/10/31", "2026/11/02"]);
-  assert.ok(!text.startsWith("﻿"));
+});
+
+test("提出用CSV：見出しは BOM のあと。列の数はデータと同じ、国籍はマニュアルの順、泊まった日は宿泊日1〜", () => {
+  const { text } = submissionCsv(fake(), "M012345678");
+  assert.ok(text.startsWith("﻿"));
+  const head = text.slice(1).split("\r\n")[0].split(",");
+  assert.equal(head.length, dataCols(text).length);
+  assert.deepEqual(head.slice(0, 6), ["届出番号", "報告期間", "宿泊日数", "宿泊者数", "宿泊延べ人数", "日本"]);
+  assert.deepEqual(head.slice(5, 27), NATIONALITY_COLUMNS.map(([, n]) => n));
+  assert.deepEqual(head.slice(27), ["宿泊日1", "宿泊日2", "宿泊日3"]);
+});
+
+test("提出用CSV：泊まりが0日の期間も、見出しとデータの行を出す（宿泊日の列なし）", () => {
+  const { text } = submissionCsv(fake({ stay_days: 0, guests: 0, guest_nights: 0, nights: [], nationality: {} }), "M012345678");
+  const head = text.slice(1).split("\r\n")[0].split(",");
+  assert.equal(head.length, 27);
+  assert.deepEqual(dataCols(text).slice(0, 5), ["M012345678", "2026_10-11", "0", "0", "0"]);
+  assert.equal(dataCols(text).length, 27);
 });
 
 test("提出用CSV：届出番号が無い・形が違うときは、つくらずに「宿と部屋の設定」へ", () => {
@@ -79,7 +99,7 @@ test("提出用CSV：デモの10-11月は出せる。数はいつもの報告と
   const rep = minpakuReport(reservations, "2026-10_11", DEMO_TODAY);
   assert.equal(rep.nights.length, rep.stay_days);
   const { text } = submissionCsv(rep, "M000000000");
-  const cols = text.trimEnd().split(",");
+  const cols = dataCols(text);
   assert.deepEqual(cols.slice(2, 5).map(Number), [rep.stay_days, rep.guests, rep.guest_nights]);
   const nat = cols.slice(5, 27).map(Number);
   assert.equal(nat.reduce((a, b) => a + b, 0), rep.guests);
