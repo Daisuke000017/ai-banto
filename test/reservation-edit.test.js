@@ -130,3 +130,10 @@ test("キャンセル料：空欄は0円。マイナス・文字・上限超え�
   assert.ok(checkCancelFee("5000").error);
   assert.ok(checkCancelFee(10_000_001).error);
 });
+
+test("台帳の画面とAPIは、ログインしないと開けない（一覧で開ける道に入っていない）", async () => {
+  const { isOpenPath } = await import("../src/lib/auth.js");
+  for (const [m, p] of [["GET", "/api/ledger"], ["POST", "/api/ledger"], ["POST", "/api/ledger/R1"], ["POST", "/api/ledger/R1/cancel"]]) {
+    assert.equal(isOpenPath(m, p), false, `${m} ${p}`);
+  }
+});
