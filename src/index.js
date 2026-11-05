@@ -8,6 +8,7 @@
 // - /api/g/:token/home?lang=            ゲスト画面（宿のURL）の案内文・人数を入れたか
 // - /api/reservations                   これからの予約の一覧（名前は出さない）と案内の状態
 // - /api/cleaning                       清掃が必要な日（M18）：今日から3週間のチェックアウトの日と入れ替え（見るだけ）
+// - /api/calendar?month=YYYY-MM          宿泊カレンダー（M21）：1か月の、日ごとの泊まり・チェックイン・チェックアウト（見るだけ）
 // - /api/drill                          訓練（M15）の状態と、今回の訓練の避難の案内の下書き
 // - /api/eval/results                   成績（M9）：自作の例題40件を、手元のスクリプトで流した結果（画面からは流さない）
 // - /api/team/runs?since=               チーム（O-3）：係ごとの働きぶり・差し戻し（入力・出力の中身は返さない）
@@ -56,7 +57,8 @@ import { monthOf, todayJst } from "./lib/dates.js";
 import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
-import { cleaningDays } from "./lib/cleaning.js";
+import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
+import { stayCalendar } from "./lib/calendar.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
   confirmBookingEmail,
@@ -233,6 +235,19 @@ async function handleGet(url, env, today) {
       "SELECT id, ota, room, checkin_date, checkout_date, status FROM reservations WHERE status = 'confirmed' ORDER BY checkout_date, id",
     ).all();
     return json(cleaningDays(results, today, inn));
+  }
+  if (p === "/api/calendar") {
+    // 宿泊カレンダー（M21）：1か月分。名前は読まない。AIは使わない
+    const month = url.searchParams.get("month") ?? monthOf(today);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
+    const inn = await loadInn(env);
+    const { results } = await env.DB.prepare(
+      `SELECT id, ota, room, checkin_date, checkout_date, adults, children, infants, status FROM reservations
+       WHERE status = 'confirmed' AND checkin_date <= ? AND checkout_date >= ? ORDER BY checkin_date, id`,
+    )
+      .bind(`${month}-31`, `${month}-01`)
+      .all();
+    return json({ ...stayCalendar(results, month, today), window: cleaningWindow(inn) });
   }
   if (p === "/api/reservations") {
     // これからの予約（今日より後に出発する・取り消していない）。名前は読まない

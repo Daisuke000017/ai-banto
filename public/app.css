@@ -618,3 +618,67 @@ body.drill::after {
 @media (max-width: 560px) {
   .drill-btn { margin-left: 0; margin-top: var(--s2); width: 100%; }
 }
+
+/* 宿泊カレンダー（M21）：7列の表。横にはみ出さない。部屋は色だけでなく「A」「B」の文字で出す */
+.cal-card .nums { margin-bottom: var(--s4); }
+.cal-legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 0 var(--s3); padding: 0; font-size: 15px; color: var(--ink-sub); }
+.cal-legend li { display: flex; align-items: center; gap: var(--s1); }
+.cal-legend .mk { width: auto; max-width: none; min-width: 32px; padding: 0 6px; }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-wd { text-align: center; font-size: 15px; color: var(--ink-sub); padding-bottom: 2px; }
+.cal-day {
+  min-height: 64px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.cal-day .n { font-size: 16px; font-weight: 700; line-height: 1.5; min-width: 28px; text-align: center; }
+.cal-day.is-today .n { background: var(--ink); color: #fff; border-radius: 999px; }
+.cal-day[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: 0; border-color: var(--action); }
+.cal-day:focus-visible { outline: 3px solid var(--action); outline-offset: 2px; }
+.cal-day.is-overlap { border-color: var(--danger); }
+.mk {
+  display: block;
+  width: 100%;
+  max-width: 40px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  border-radius: 999px;
+  background: var(--chart-1);
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mk.unknown { background: var(--warn-bg); color: var(--warn); }
+.mk.out { background: transparent; color: var(--ink-sub); outline: 1px dashed var(--ink-sub); outline-offset: -1px; }
+.mk.over { background: var(--danger-bg); color: var(--danger); }
+.cal-detail { margin-top: var(--s4); }
+.cal-detail-h { font-size: 20px; margin: 0 0 var(--s2); }
+.cal-rooms { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.cal-rooms > li { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3); display: grid; gap: var(--s1); }
+.cal-rooms > li.is-busy { border-left: 6px solid var(--chart-1); }
+.cal-rooms p { margin: 0; font-size: 17px; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
+.cal-rooms .pill { margin-right: var(--s2); }
+.cal-rooms .notice { margin-top: var(--s1); font-size: 16px; }
+.cal-room { font-weight: 700; }
+.cal-sub { display: block; font-size: 15px; color: var(--ink-sub); }
+.cal-free { color: var(--ink-sub); }
+.cal-card details { margin-top: var(--s4); }
+.cal-card > .notice.info:last-child { margin-top: var(--s3); }
+@media (max-width: 560px) {
+  .cal-card { padding-left: var(--s2); padding-right: var(--s2); }
+  .cal { gap: 3px; }
+  .cal-day { min-height: 60px; padding: 4px 1px; }
+  .mk { letter-spacing: -0.04em; }
+}
