@@ -27,6 +27,7 @@ const T = {
     s119: "火事・救急車", s110: "警察",
     sosNote: "押すと電話がかかります。",
     foot: "デモのデータはすべて架空です。",
+    busFoot: "宿と予約は架空です。バスの時刻は実際の時刻表です。",
     dates: (a, b) => `${a} 〜 ${b}`,
   },
   en: {
@@ -50,6 +51,7 @@ const T = {
     s119: "Fire / Ambulance", s110: "Police",
     sosNote: "Tap to make a phone call.",
     foot: "All data in this demo is fictional.",
+    busFoot: "The stay and bookings are fictional. Bus times are from the real timetable.",
     dates: (a, b) => `${a} – ${b}`,
   },
   ko: {
@@ -73,6 +75,7 @@ const T = {
     s119: "화재·구급차", s110: "경찰",
     sosNote: "누르면 전화가 걸립니다.",
     foot: "이 데모의 데이터는 모두 가상입니다.",
+    busFoot: "숙소와 예약은 가상입니다. 버스 시간은 실제 시간표입니다.",
     dates: (a, b) => `${a} ~ ${b}`,
   },
   "zh-TW": {
@@ -96,6 +99,7 @@ const T = {
     s119: "火災・救護車", s110: "警察",
     sosNote: "按下即可撥打電話。",
     foot: "此示範的資料皆為虛構。",
+    busFoot: "住宿與預約皆為虛構。公車時刻取自實際時刻表。",
     dates: (a, b) => `${a} ～ ${b}`,
   },
 };
@@ -127,6 +131,11 @@ const state = { data: null, lang: "en", counts: { adults: 1, children: 0, infant
 function show(id) {
   for (const v of document.querySelectorAll(".view")) v.hidden = v.id !== id;
   $("foot").hidden = ["v-loading", "v-gone", "v-error"].includes(id);
+  // バスの画面（行って戻れるかも同じ時刻表）だけは、時刻が実際のものだと書く
+  if (id !== "v-lang") {
+    const t = T[state.lang];
+    $("foot").textContent = id === "v-panel" && ["bus", "ask"].includes(state.panel) ? t.busFoot : t.foot;
+  }
   window.scrollTo(0, 0);
 }
 
@@ -435,7 +444,7 @@ const BT = {
     kind: { weekday: "平日", sat: "土曜", sun_holiday: "日曜・祝日" },
     now: "いま",
     toward: (x) => `${x} 方面`, sep: "・",
-    next: "次のバス", after: "そのあと", last: "今日の最終バス",
+    next: "次のバス", nextLast: "次が今日の最終バスです", after: "そのあと", last: "今日の最終バス",
     none: "今日のバスは、もうありません。",
     gone: "出ました",
     inMin: (n) => (n <= 0 ? "まもなく" : n >= 60 ? `あと${Math.floor(n / 60)}時間${n % 60}分` : `あと${n}分`),
@@ -466,7 +475,7 @@ const BT = {
     kind: { weekday: "Weekday", sat: "Saturday", sun_holiday: "Sunday/holiday" },
     now: "Now",
     toward: (x) => `To ${x}`, sep: " / ",
-    next: "Next bus", after: "After that", last: "Last bus today",
+    next: "Next bus", nextLast: "The next bus is the last one today", after: "After that", last: "Last bus today",
     none: "No more buses today.",
     gone: "Left",
     inMin: (n) => (n <= 0 ? "Now" : n >= 60 ? `in ${Math.floor(n / 60)} h ${n % 60} min` : `in ${n} min`),
@@ -497,7 +506,7 @@ const BT = {
     kind: { weekday: "평일", sat: "토요일", sun_holiday: "일요일·공휴일" },
     now: "지금",
     toward: (x) => `${x} 방면`, sep: "·",
-    next: "다음 버스", after: "그다음", last: "오늘 막차",
+    next: "다음 버스", nextLast: "다음 버스가 오늘 막차입니다", after: "그다음", last: "오늘 막차",
     none: "오늘 버스는 더 이상 없습니다.",
     gone: "출발함",
     inMin: (n) => (n <= 0 ? "곧 출발" : n >= 60 ? `${Math.floor(n / 60)}시간 ${n % 60}분 후` : `${n}분 후`),
@@ -528,7 +537,7 @@ const BT = {
     kind: { weekday: "平日", sat: "週六", sun_holiday: "週日・國定假日" },
     now: "現在",
     toward: (x) => `往${x}`, sep: "、",
-    next: "下一班", after: "之後", last: "今日末班車",
+    next: "下一班", nextLast: "下一班就是今日末班車", after: "之後", last: "今日末班車",
     none: "今天已無班次。",
     gone: "已發車",
     inMin: (n) => (n <= 0 ? "即將發車" : n >= 60 ? `${Math.floor(n / 60)}小時${n % 60}分鐘後` : `${n}分鐘後`),
@@ -604,6 +613,33 @@ async function openBus() {
   renderBus(busCache[state.lang]);
 }
 
+// 文を「・」「、」のあとで区切って箱に入れる（行の終わりに1文字だけ残らないように）
+// 箱の端の空白は消えてしまうので、空白は箱の外に出す
+function boxIn(parent, text, cls = "chunk") {
+  const [, lead, body, tail] = String(text).match(/^(\s*)([\s\S]*?)(\s*)$/);
+  if (lead) parent.append(lead);
+  parent.append(el("span", cls, body));
+  if (tail) parent.append(tail);
+}
+function chunked(tag, cls, text) {
+  const p = el(tag, cls);
+  for (const part of String(text).split(/(?<=[・、，,])/)) boxIn(p, part);
+  return p;
+}
+
+// 「○○・△△ 方面」の見出し。バス停の名前の途中では折り返さない
+function towardEl(tag, cls, names, b) {
+  const [pre, post] = b.toward("\u0000").split("\u0000");
+  const h = el(tag, cls);
+  names.forEach((n, i) => {
+    const last = i === names.length - 1;
+    boxIn(h, `${i === 0 ? pre : ""}${n}${last ? post : b.sep}`);
+  });
+  return h;
+}
+
+const sameTrip = (a, c) => a && c && a.time === c.time && a.to === c.to;
+
 function busRow(cls, label, d, b) {
   const box = el("div", cls);
   box.append(el("p", "bus-label", label));
@@ -612,7 +648,7 @@ function busRow(cls, label, d, b) {
   line.append(el("span", "bus-in", b.inMin(d.in_minutes)));
   box.append(line);
   box.append(el("p", "bus-arrive", b.arrive(d.to, d.arrive)));
-  if (d.note) box.append(el("p", "bus-note", d.note));
+  if (d.note) box.append(chunked("p", "bus-note", d.note));
   return box;
 }
 
@@ -633,16 +669,21 @@ function renderBus(data) {
   dirs.replaceChildren();
   for (const d of data.directions) {
     const card = el("section", "card bus-dir");
-    card.append(el("h2", "sub-title", b.toward(d.toward.join(b.sep))));
+    card.append(towardEl("h2", "sub-title", d.toward, b));
+    // 次のバスが今日の最終と同じ便なら、1つにまとめて「次が最終」と出す
+    const nextIsLast = sameTrip(d.next[0], d.last);
     if (d.next.length) {
-      card.append(busRow("bus-next", b.next, d.next[0], b));
-      if (d.next.length > 1) {
+      card.append(busRow(nextIsLast ? "bus-next bus-final" : "bus-next", nextIsLast ? b.nextLast : b.next, d.next[0], b));
+      // 最終バスは下の黄色い枠で出すので、「そのあと」には入れない
+      const after = d.next.slice(1).filter((n) => !sameTrip(n, d.last));
+      if (after.length) {
         card.append(el("p", "bus-label", b.after));
         const ul = el("ul", "bus-after");
-        for (const n of d.next.slice(1)) {
+        for (const n of after) {
           const li = el("li");
           li.append(el("span", "bus-time-s", n.time));
           li.append(el("span", "bus-after-to", ` ${b.arrive(n.to, n.arrive)}`));
+          if (n.note) boxIn(li, paren(n.note), "bus-after-note");
           ul.append(li);
         }
         card.append(ul);
@@ -650,7 +691,7 @@ function renderBus(data) {
     } else {
       card.append(el("p", "bus-none", b.none));
     }
-    if (d.last) {
+    if (d.last && !nextIsLast) {
       const last = busRow("bus-last", b.last, d.last, b);
       if (d.last.in_minutes < 0) {
         last.classList.add("passed");
@@ -679,7 +720,7 @@ function renderBus(data) {
   const all = $("bus-all");
   all.replaceChildren();
   for (const d of data.directions) {
-    all.append(el("h3", "bus-all-head", b.toward(d.toward.join(b.sep))));
+    all.append(towardEl("h3", "bus-all-head", d.toward, b));
     const ul = el("ul", "bus-all-list");
     for (const a of d.all) {
       const li = el("li", a.passed ? "passed" : null);

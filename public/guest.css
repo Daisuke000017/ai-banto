@@ -210,6 +210,11 @@ select.bad { border-color: var(--danger); }
 .bus-after { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .bus-time-s { font-weight: 700; font-variant-numeric: tabular-nums; }
 .bus-after-to { color: var(--ink-sub); }
+.bus-note { color: var(--warn); font-weight: 700; }
+.bus-after-note { display: inline-block; color: var(--warn); font-weight: 700; }
+/* 「・」で区切った名前や注意書き。途中で折り返さず、入らなければ箱ごと次の行へ */
+.chunk { display: inline-block; }
+.bus-final .bus-label { color: var(--warn); font-weight: 700; }
 .bus-none { margin: 0; font-weight: 700; }
 .bus-last { padding: 10px 12px; border-left: 4px solid var(--warn); border-radius: 0 var(--r) var(--r) 0; background: var(--warn-bg); }
 .bus-last .bus-label, .bus-last .bus-in { color: var(--warn); font-weight: 700; }
