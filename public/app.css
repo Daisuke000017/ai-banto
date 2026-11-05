@@ -544,6 +544,7 @@ textarea {
 /* 行末に1〜2文字だけ残らないよう、言葉の途中では折らない。折れてよい所は index.html の <wbr> と句読点。入りきらないときだけ最後の手段で折る */
 .notes li { font-size: 15px; color: var(--ink-sub); line-height: 1.7; padding-left: 1em; text-indent: -1em; word-break: keep-all; overflow-wrap: anywhere; }
 .notes li::before { content: "・"; }
+.notes .logout { margin-top: var(--s3); min-height: 44px; border-color: var(--line); color: var(--ink-sub); font-weight: 500; }
 
 .toast {
   position: fixed;

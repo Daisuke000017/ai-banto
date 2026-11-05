@@ -51,7 +51,9 @@
 // - POST /api/decisions/:id/review       値付けの知らせに「見直した／このまま」を記録 {choice:"reviewed"|"kept"}（予約も帳簿も変えない）
 // - 定期ジョブ（scheduled）              毎朝7時（日本時間）に見回る
 // - メール受け取り（email）              決めた相手からの予約メールだけ読んで確認待ちに置き、見回る
-// ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
+// オーナーのログイン（src/lib/auth.js）：ゲストの画面・API とログイン画面のほかは、ログインが要る
+// - POST /api/login {password}・POST /api/logout・GET /api/session（ログインを使っているか）
+// - Secret「OWNER_PASSWORD_HASH」が無いときは、手元（localhost）だけ開く。それ以外からは 403
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
 import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
@@ -93,8 +95,8 @@ import { guidePrice, monthTakeHome, pacePlan, rateList, reviewCompare } from "./
 import { MAX_RAW_BYTES, bytesToBinary, messageKeyOf, parseRawEmail, senderAllowed } from "./lib/mail-in.js";
 import { evalResults, teamRuns } from "./lib/eval.js";
 import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
+import { ownerGate } from "./lib/auth.js";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_BODY_BYTES = 10_000;
 const MAX_MAIL_BODY_BYTES = 60_000; // 予約メールの貼り付けだけ大きめ（日本語12,000字まで）
 const MAX_STATEMENT_BODY_BYTES = 3_000_000; // 明細のCSV（2MBまで）を base64 にした大きさ
@@ -165,6 +167,7 @@ async function readJsonBody(request, url, maxBytes = MAX_BODY_BYTES) {
   if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
     throw new HttpError(415, "JSONで送ってください");
   }
+  if (Number(request.headers.get("content-length") ?? 0) > maxBytes) throw new HttpError(413, "中身が大きすぎます");
   const text = await request.text();
   if (new TextEncoder().encode(text).length > maxBytes) throw new HttpError(413, "中身が大きすぎます");
   try {
@@ -960,9 +963,11 @@ async function serveAsset(request, env, path = null) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (!LOCAL_HOSTS.has(url.hostname)) return json({ error: "この画面はまだ公開していません" }, 403);
     const today = todayJst(env.DEMO_TODAY);
     try {
+      // ログインの確かめ（ゲストの画面・API とログイン画面は通す）
+      const gate = await ownerGate(request, url, env, { json, readJsonBody, headers: SECURITY_HEADERS });
+      if (gate) return gate;
       // ゲスト画面（M12）。オーナー画面より先に見る
       const gp = url.pathname.match(/^\/g\/([A-Za-z0-9_-]{20,100})$/);
       if (gp) {

@@ -1,0 +1,67 @@
+/* ログイン画面（ログインなしで読める。オーナー画面の app.css と同じ色と大きさ） */
+:root {
+  --bg: #EEF3F8;
+  --surface: #FFFFFF;
+  --ink: #1E2226;
+  --ink-sub: #5A6068;
+  --line: #D5DCE4;
+  --action: #1F4E79;
+  --danger: #A8261B;
+  --danger-bg: #FCEAE7;
+  --glow: #F2B33D;
+  --r: 10px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+  font-size: 18px;
+  line-height: 1.8;
+  word-break: auto-phrase; overflow-wrap: break-word;
+}
+h1, p { margin: 0; }
+[hidden] { display: none !important; }
+.login {
+  max-width: 420px;
+  margin: 12vh auto 0;
+  padding: 24px 16px;
+}
+.brand { color: var(--ink-sub); font-size: 16px; font-weight: 700; }
+h1 { font-size: 24px; margin-bottom: 24px; }
+form {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 24px 16px;
+  display: grid;
+  gap: 8px;
+}
+label { font-weight: 700; }
+input {
+  font: inherit;
+  color: inherit;
+  min-height: 56px;
+  padding: 8px 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.btn {
+  margin-top: 16px;
+  min-height: 56px;
+  padding: 8px 16px;
+  border-radius: var(--r);
+  border: 2px solid var(--action);
+  background: var(--action);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+input:focus-visible, .btn:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
+.msg { color: var(--danger); background: var(--danger-bg); border-radius: var(--r); padding: 8px 12px; font-size: 16px; }
+.note { margin-top: 16px; color: var(--ink-sub); font-size: 16px; }
