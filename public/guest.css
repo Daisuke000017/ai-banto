@@ -228,9 +228,9 @@ select.bad { border-color: var(--danger); }
 .bus-missed { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: var(--r); background: var(--bg); color: var(--ink-sub); font-size: 16px; }
 .bus-missed .bus-time-s { text-decoration: line-through; }
 .bus-missed-why { margin: 0; font-weight: 700; }
-.bus-last { padding: 10px 12px; border-left: 4px solid var(--warn); border-radius: 0 var(--r) var(--r) 0; background: var(--warn-bg); }
+.bus-last { padding: 10px 12px; border-radius: var(--r); background: var(--warn-bg); }
 .bus-last .bus-label, .bus-last .bus-in { color: var(--warn); font-weight: 700; }
-.bus-last.passed { border-left-color: var(--line); background: var(--bg); }
+.bus-last.passed { background: var(--bg); }
 .bus-last.passed .bus-time, .bus-last.passed .bus-label, .bus-last.passed .bus-in { color: var(--ink-sub); }
 
 .bus-map { display: block; width: 100%; height: auto; max-width: 420px; margin: 0 auto; }
@@ -280,12 +280,9 @@ select.bad { border-color: var(--danger); }
 .ask-q { margin: 0; color: var(--ink-sub); }
 .ask-missed { margin: 0; font-weight: 700; }
 .ask-card .guide { margin: 0; }
-.ask-card { border-left: 6px solid var(--line); }
-.ask-ok { border-left-color: var(--ok); }
+/* 判定の結果は、見出しの印と文字の色で伝える（左に色の線は付けない） */
 .ask-ok .ask-judge { color: var(--ok); }
-.ask-tight { border-left-color: var(--warn); }
 .ask-tight .ask-judge { color: var(--warn); }
-.ask-ng { border-left-color: var(--danger); }
 .ask-ng .ask-judge { color: var(--danger); }
 .ask-plan { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
 .ask-plan li { display: grid; grid-template-columns: 6em 1fr; gap: 8px; align-items: baseline; }

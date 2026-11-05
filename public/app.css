@@ -106,9 +106,8 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
   font-size: 16px;
   color: var(--ink);
   background: var(--danger-bg);
-  border-left: 4px solid var(--danger);
   padding: var(--s1) var(--s3);
-  border-radius: 0 var(--r) var(--r) 0;
+  border-radius: var(--r);
 }
 .arrow-who { font-weight: 700; }
 .arrow-mark { color: var(--danger); font-weight: 700; padding: 0 var(--s1); }
@@ -150,11 +149,11 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .eval-card .num.is-minor dd { font-size: 22px; color: var(--ink-sub); }.cell-sub { display: block; font-size: 15px; }
 .cell-sub.danger { color: var(--danger); }
 .cell-label { display: none; }
-/* 清掃が必要な日（M18）：1日1行。入れ替えの日は --glow の左の太線と明るい地で目立たせ、言葉でも「入れ替え」と出す */
+/* 清掃が必要な日（M18）：1日1行。入れ替えの日は --glow の枠と明るい地で目立たせ、言葉でも「入れ替え」と出す */
 .clean-list { list-style: none; padding: 0; display: grid; gap: var(--s3); margin: var(--s4) 0; }
 .clean-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); }
-/* 左の色の線は意味のあるもの（入れ替えの日）だけに付ける */
-.clean-list li.is-turnover { border-left: 4px solid var(--glow); background: var(--glow-bg); }
+/* 左に色の線を付ける形は使わない（よくある作り物っぽい見た目になるため）。入れ替えの日は枠の色と地の色で分ける */
+.clean-list li.is-turnover { border-color: var(--glow); background: var(--glow-bg); }
 .clean-date { display: flex; align-items: baseline; gap: var(--s2); }
 .clean-date b { font-size: 20px; }
 .clean-date span { font-size: 16px; color: var(--ink-sub); }
@@ -176,23 +175,28 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .team-note.is-working {
   color: var(--ink);
   background: var(--glow-bg);
-  border-left: 4px solid var(--glow);
   padding: var(--s1) var(--s3);
-  border-radius: 0 var(--r) var(--r) 0;
+  border-radius: var(--r);
 }
 .credits { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s2); font-size: 15px; color: var(--ink-sub); }
 /* 担当の名前：押せる札に見えないよう、枠も地の色も付けず、太字の黒い文字だけにする（まわりは灰色の文字） */
 .role-pill { font-weight: 700; color: var(--ink); }
 .dx .credits { margin-top: var(--s2); }
-/* 値付けカードの「くわしく」：毎回同じ説明はここにたたむ。出典は名前だけの紺のリンク */
+/* 値付けカードの「詳しく」：毎回同じ説明はここにたたむ。出典は名前だけの紺のリンク */
 .dx-more .kv { margin-top: var(--s2); }
 .dx-more a { color: var(--action); text-underline-offset: 3px; }
 /* 画面を移るだけのボタンは、枠なしの紺の下線つき文字（決めるボタンと見分ける） */
 .btn.link { min-height: 44px; margin-top: var(--s2); padding: 0; border-color: transparent; background: none; color: var(--action); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .credit { display: inline-flex; align-items: center; gap: var(--s1); white-space: nowrap; }
-/* 決裁箱の表：プログラムが数えた数字の行の印（押せない、灰色の小さな字） */
-.calc-mark { display: block; font-size: 15px; color: var(--ink-sub); }
-.calc-mark::before { content: "＝ "; }
+/* 決裁箱の閉じたカードに見せる、いちばん大事な1行（締切・件数・目安の値段など） */
+.dx-key { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2); margin-top: var(--s3); font-size: 18px; line-height: 1.6; }
+.dx-key-label { font-size: 15px; color: var(--ink-sub); }
+.dx .dx-more { margin-top: var(--s2); }
+.dx-more > .kv + .kv { margin-top: 0; }
+/* 開いているか閉じているかを、矢印の向きで見せる */
+.dx-more > summary::after { content: "▾"; margin-left: var(--s1); font-size: 15px; }
+.dx-more[open] > summary::after { content: "▴"; }
+.dx .btns { margin-top: var(--s3); }
 
 main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 .panel { display: grid; gap: var(--s3); }
@@ -635,7 +639,7 @@ textarea.note-in { min-height: 64px; }
   padding: var(--s2) var(--s3);
   background: var(--danger-bg);
   color: var(--danger);
-  border-left: 6px solid var(--danger);
+  border-radius: var(--r);
   word-break: auto-phrase;
 }
 .drill-label { font-size: 20px; font-weight: 700; }
@@ -648,11 +652,11 @@ body.drill::after {
   z-index: 50;
 }
 .drill-panel { display: grid; gap: var(--s4); margin-bottom: var(--s5); }
-.card.evac { border-left: 6px solid var(--danger); }
+.card.evac { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 
-/* 決裁箱（M20）：左の線は「急ぎ」「確認待ち」だけ。お知らせは線なしの白いカード。色だけでなく札でも伝える */
-.dx.dx-urgent { border-left: 6px solid var(--danger); }
-.dx.dx-warn { border-left: 6px solid var(--warn); }
+/* 決裁箱（M20）：左に色の線は付けない。急ぎ・確かめて・お知らせの違いは、いちばん上の札（色と言葉）で伝える。
+   急ぎだけは、カードのまわりの枠も赤にする（幅が変わらないよう内側の影で太く見せる） */
+.dx.dx-urgent { border-color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 .dx-title { margin-top: var(--s2); margin-bottom: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
 .dx-last { font-size: 16px; color: var(--ink-sub); margin-top: var(--s2); }
 .dx-done { display: grid; gap: var(--s2); font-size: 16px; line-height: 1.6; }

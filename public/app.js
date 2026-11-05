@@ -2539,13 +2539,21 @@ function decisionCard(d, main = false) {
   const fixLabel = d.kind in OK_LABEL ? `直す（${TITLE[d.link] ?? "画面"}へ）` : `${TITLE[d.link] ?? "画面"}を見る`;
   // 「書いた人」は下の行（書いた／確かめた）と同じことなので、行が出るときは表に出さない
   const facts = d.by ? d.facts.filter((f) => f.label !== "書いた人") : d.facts;
+  // 閉じたカードには大事な1行だけ。残りは「詳しく」を押すと、その場で開く
+  const key = keyFact(d, facts);
+  const rest = facts.filter((f) => f !== key);
+  // 「直す」は決めるボタンの横。ただ画面を見に行くだけのものは文字のリンクにする
+  const fix = d.link in SHOW && d.kind in OK_LABEL ? btn(fixLabel, () => openFrom(d), "btn") : null;
+  const look = d.link in SHOW && !(d.kind in OK_LABEL) ? btn(`${fixLabel} →`, () => openFrom(d), "btn link") : null;
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv })]),
     el("h3", { cls: "card-title dx-title" }, keepTogether(d.title)),
     dxCredits(d),
-    factList(facts, "kv"),
+    keyLine(key),
+    dxMore(d, "詳しく", [rest.length ? factList(rest, "kv") : null]),
     d.can_ok ? null : el("p", { cls: "notice warn", text: "番頭が決められないことがあるので、まだOKできません。「直す」から直してください" }),
-    el("div", { cls: "btns" }, [ok, d.link in SHOW ? btn(fixLabel, () => openFrom(d), "btn") : null]),
+    el("div", { cls: "btns" }, [ok, fix]),
+    look,
     msg,
   ]);
 }
@@ -2597,15 +2605,36 @@ function keepTogether(text) {
   return out;
 }
 
-// 事実の表。プログラムが数えた数字の行には、小さな印を付ける
+// 事実の表。誰が数えたかはカードの「数えた プログラム」の行で言っているので、行ごとにはくり返さない
 function factList(facts, cls) {
   return el("dl", { cls }, facts.flatMap((f) => [
     el("dt", {}, keepTogether(f.label)),
-    el("dd", {}, [...keepTogether(f.value), f.calc ? el("span", { cls: "calc-mark", text: "プログラムが数えた" }) : null]),
+    el("dd", {}, f.label === "出典" ? sourceLinks(f.value) : keepTogether(f.value)),
   ]));
 }
 
-// 値付けのカードで毎回同じになる説明。カードを短くするため「くわしく」の中へたたむ
+// 閉じたカードに見せる、いちばん大事な1行（種類ごと）。決まっていない種類は最初の行
+const KEY_FACT = { report_due: "締切", discrepancy: "件数", cleaning: "清掃できる時間", price_event: "目安の値段" };
+function keyFact(d, facts) {
+  return facts.find((f) => f.label === KEY_FACT[d.kind]) ?? facts[0] ?? null;
+}
+function keyLine(f) {
+  if (!f) return null;
+  return el("p", { cls: "dx-key" }, [el("span", { cls: "dx-key-label", text: f.label }), el("strong", {}, keepTogether(f.value))]);
+}
+
+// 「詳しく」：押すとカードの中でその場で開く。見回りでカードを描き直しても、開いたものは開いたままにする
+const dxOpen = new Set();
+function dxMore(d, label, children) {
+  const kids = children.filter(Boolean);
+  if (!kids.length) return null;
+  const box = el("details", { cls: "dx-more" }, [el("summary", { text: label }), ...kids]);
+  box.open = dxOpen.has(d.id);
+  box.addEventListener("toggle", () => (box.open ? dxOpen.add(d.id) : dxOpen.delete(d.id)));
+  return box;
+}
+
+// 値付けのカードで毎回同じになる説明。カードを短くするため「詳しく」の中へたたむ
 const PRICE_DETAIL = new Set(["手取りの目安", "最低価格なら", "目安の元", "180日の方針", "180日の数え方", "決めるのは", "出典"]);
 
 // 「名前 https://…／名前 https://…」を、名前だけの短いリンクにする（URLをそのまま本文に出さない）
@@ -2618,27 +2647,20 @@ function sourceLinks(text) {
   ]).filter(Boolean);
 }
 
-function priceDetails(facts) {
-  if (!facts.length) return null;
-  return el("details", { cls: "dx-more" }, [
-    el("summary", { text: "くわしく（手取り・180日・出典）" }),
-    el("dl", { cls: "kv dx-price" }, facts.flatMap((f) => [
-      el("dt", {}, keepTogether(f.label)),
-      el("dd", {}, f.label === "出典" ? sourceLinks(f.value) : keepTogether(f.value)),
-    ])),
-  ]);
-}
-
 // 値付けの知らせ：OK の代わりに「見直した／このまま」。押したことを記録するだけで、予約も帳簿も変えない
 function priceCard(d, lv, cls, msg, main = false) {
   const facts = d.facts ?? [];
+  const key = keyFact(d, facts);
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv }), el("span", { cls: "pill", text: "値付け" })]),
     el("h3", { cls: "card-title dx-title" }, keepTogether(d.title)),
     dxCredits(d),
-    // 行事の名前が見出しにもう出ているときは、表でくり返さない
-    factList(facts.filter((f) => !PRICE_DETAIL.has(f.label) && !(f.label === "行事" && d.title.includes(f.value))), "kv dx-price"),
-    priceDetails(facts.filter((f) => PRICE_DETAIL.has(f.label))),
+    keyLine(key),
+    // 空いている夜・手取り・180日・出典は「詳しく」の中。行事の名前が見出しにもう出ているときは、くり返さない
+    dxMore(d, "詳しく", [
+      factList(facts.filter((f) => f !== key && !PRICE_DETAIL.has(f.label) && !(f.label === "行事" && d.title.includes(f.value))), "kv dx-price"),
+      factList(facts.filter((f) => PRICE_DETAIL.has(f.label)), "kv dx-price"),
+    ].filter((x) => x.childElementCount)),
     el("p", { cls: "sub", text: "押しても値段は変わりません（記録のみ）" }),
     el("div", { cls: "btns" }, [
       btn("見直した", () => decideReview(d, "reviewed", msg), main ? "btn primary" : "btn"),
