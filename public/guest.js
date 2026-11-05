@@ -445,6 +445,7 @@ const BT = {
     now: "いま",
     toward: (x) => `${x} 方面`, sep: "・",
     next: "次のバス", nextLast: "次が今日の最終バスです", after: "そのあと", last: "今日の最終バス",
+    poleMap: "この方面の乗り場を地図で開く",
     none: "今日のバスは、もうありません。",
     gone: "出ました",
     inMin: (n) => (n <= 0 ? "まもなく" : n >= 60 ? `あと${Math.floor(n / 60)}時間${n % 60}分` : `あと${n}分`),
@@ -476,6 +477,7 @@ const BT = {
     now: "Now",
     toward: (x) => `To ${x}`, sep: " / ",
     next: "Next bus", nextLast: "The next bus is the last one today", after: "After that", last: "Last bus today",
+    poleMap: "Open this direction's stop on the map",
     none: "No more buses today.",
     gone: "Left",
     inMin: (n) => (n <= 0 ? "Now" : n >= 60 ? `in ${Math.floor(n / 60)} h ${n % 60} min` : `in ${n} min`),
@@ -507,6 +509,7 @@ const BT = {
     now: "지금",
     toward: (x) => `${x} 방면`, sep: "·",
     next: "다음 버스", nextLast: "다음 버스가 오늘 막차입니다", after: "그다음", last: "오늘 막차",
+    poleMap: "이 방면 승차 위치를 지도에서 열기",
     none: "오늘 버스는 더 이상 없습니다.",
     gone: "출발함",
     inMin: (n) => (n <= 0 ? "곧 출발" : n >= 60 ? `${Math.floor(n / 60)}시간 ${n % 60}분 후` : `${n}분 후`),
@@ -538,6 +541,7 @@ const BT = {
     now: "現在",
     toward: (x) => `往${x}`, sep: "、",
     next: "下一班", nextLast: "下一班就是今日末班車", after: "之後", last: "今日末班車",
+    poleMap: "在地圖上開啟此方向的乘車處",
     none: "今天已無班次。",
     gone: "已發車",
     inMin: (n) => (n <= 0 ? "即將發車" : n >= 60 ? `${Math.floor(n / 60)}小時${n % 60}分鐘後` : `${n}分鐘後`),
@@ -698,6 +702,14 @@ function renderBus(data) {
         last.querySelector(".bus-in").textContent = b.gone;
       }
       card.append(last);
+    }
+    // 乗り場は方面ごとに道の反対側などにあるので、方面ごとに地図を開けるようにする（位置だけ・道順は出さない）
+    if (d.map_url) {
+      const a = el("a", "btn bus-pole", b.poleMap);
+      a.href = d.map_url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      card.append(a);
     }
     dirs.append(card);
   }

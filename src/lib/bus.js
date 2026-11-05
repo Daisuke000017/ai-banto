@@ -1,10 +1,20 @@
 // バスのタブ（M13・G-3）。次のバス・今日の最終バス・線の太さ（1日の本数）を、時刻表からプログラムだけで出す。
 // 時刻表・停留所はAIに渡さない。画面には必ず「◯年◯月◯日改正の時刻表より」と添える。
-import { busStops, busStopTimes, innAccess, timetable } from "../../seed/demo-bus.js";
+import { busStops, busStopTimes, innAccess, stopPoles, timetable } from "../../seed/demo-bus.js";
 import { dayKind } from "./dates.js";
 
 const NAME_KEY = { ja: "name_ja", en: "name_en", ko: "name_ko", "zh-TW": "name_zh_hant" };
 const STOPS = new Map(busStops.map((s) => [s.id, s]));
+
+/**
+ * 乗り場を Google マップで開くリンク（キー不要の公開URL）。乗り場の位置だけを開き、いまいる場所からの道順は出さない
+ */
+export function poleMapUrl(dir) {
+  const p = stopPoles[dir];
+  if (!p) return null;
+  const q = new URLSearchParams({ api: "1", query: `${p.lat},${p.lng}`, query_place_id: p.place_id });
+  return `https://www.google.com/maps/search/?${q}`;
+}
 
 /**
  * 停留所の名前。その言語の名前がなければ「日本語名 (英語名)」。
@@ -100,6 +110,7 @@ export function busBoard({ date, minutes, lang }) {
     return {
       direction: dir,
       toward,
+      map_url: poleMapUrl(dir),
       next: ahead.slice(0, 3).map(view),
       last: all.length ? view(all[all.length - 1]) : null,
       all: all.map((d) => ({ time: d.time, to: d.to, note: d.note, passed: d.min < minutes })),

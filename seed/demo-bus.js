@@ -23,6 +23,13 @@ export const timetable = {
 // 宿（架空）から最寄りのバス停まで。歩く分数は架空の宿の値。道順の写真はオーナーが入れる（デモでは無し）
 export const innAccess = { stop_id: "aoshima", walk_minutes: 8 };
 
+// 青島の乗り場は方面ごとに別の場所（Google マップの停留所。2026-11-05 地図で確かめた）
+// up＝宮崎駅方面、down＝白浜・飫肥方面。どちらがどちらかは道の左側に停まる向きから決め、2026-11-05 社長が確認した
+export const stopPoles = {
+  up: { label: "青島2丁目6（青島街道側）", lat: 31.8023228, lng: 131.4680981, place_id: "ChIJ5dUS8EzGODURqSEAWnrSzDI" },
+  down: { label: "青島2丁目12（県道377号の東側）", lat: 31.8014445, lng: 131.4687509, place_id: "ChIJE48xVUzGODURkfmgoLpTzD8" },
+};
+
 export const busRoutes = [
   { id: "aoshima", name: "青島方面（宮崎駅〜青島・白浜）", operator: "宮崎交通" },
   { id: "nichinan", name: "日南線（宮崎駅〜鵜戸神宮・飫肥）", operator: "宮崎交通" },
