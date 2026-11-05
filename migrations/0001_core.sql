@@ -43,7 +43,7 @@ CREATE TABLE reservations (
   lodging_tax_collected INTEGER,           -- 預かった宿泊税（円）。分からなければ NULL
   nationalities_json TEXT,                 -- {"JP":2,"TW":1}
   amount_gross INTEGER,
-  room TEXT CHECK (room IN ('A', 'B')),
+  room TEXT CHECK (room IS NULL OR (length(room) = 1 AND room BETWEEN 'A' AND 'Z')), -- 部屋の記号（rooms 表。2026-11-07 に A・B 固定から広げた）
   status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled')),
   -- 追加した列（2026-11-03）
   cosleep_free INTEGER NOT NULL DEFAULT 0 CHECK (cosleep_free >= 0), -- 子どものうち、料金のかからない添い寝の人数

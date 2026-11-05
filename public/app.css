@@ -741,6 +741,7 @@ body.drill::after {
 .cal-legend .sw.clean.turn { width: 16px; height: 16px; border: 3px solid var(--glow); border-radius: 4px; background: var(--glow-bg); }
 .cal-legend .sw.lane { height: 6px; border-radius: 3px; }
 .cal-legend .sw.lane.b { background: var(--chart-2); }
+.cal-legend .sw.lane.c { background: var(--chart-3); }
 
 /* 帯で見る：ラベル1列＋1日を午前・午後の2列。位置はプログラムが gridColumn で入れる（CSSOM。style="" の文字は書かない） */
 /* 1日の幅：スマホ・タブレットは40px（横にずらす）、広い画面は26px以上で1か月がほぼ入る */
@@ -814,6 +815,7 @@ body.drill::after {
   cursor: pointer;
 }
 .tl-bar.room-b { background: var(--chart-2); color: var(--ink); }
+.tl-bar.room-c { background: var(--chart-3); color: var(--ink); }
 .tl-bar.unknown { background: var(--warn-bg); color: var(--warn); box-shadow: inset 0 0 0 2px var(--warn); }
 .tl-bar.over { background: var(--danger-bg); color: var(--danger); box-shadow: inset 0 0 0 2px var(--danger); }
 .tl-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
@@ -847,6 +849,14 @@ body.drill::after {
 .mn-lane { display: grid; grid-template-columns: 1fr 1fr; height: 6px; }
 .mn-lane .h.on { background: var(--chart-1); }
 .mn-lane.b .h.on { background: var(--chart-2); }
+.mn-lane.c .h.on { background: var(--chart-3); }
+
+/* 宿と部屋の設定 */
+.room-list { display: grid; gap: var(--s3); margin-top: var(--s3); }
+.room-item { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3) var(--s4); }
+.room-item.is-off { background: var(--bg); }
+.room-facts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: 16px; color: var(--ink-sub); }
+.room-add { margin-top: var(--s4); }
 .mn-lane.unknown .h.on { background: var(--warn); }
 .mn-lane.over .h.on { background: var(--danger); }
 .mn-clean { width: 12px; height: 12px; margin-top: auto; border: 2px solid var(--ink-sub); border-radius: 3px; }

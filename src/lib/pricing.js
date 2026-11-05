@@ -8,7 +8,7 @@
 
 import { addDays, daysBetween, isHoliday, HOLIDAY_YEARS, parseDate } from "./dates.js";
 import { feeOf, feeRates, linesIndex, lodgingSales } from "./kpis.js";
-import { ROOMS } from "./calendar.js";
+import { roomCodes, roomLabel } from "./rooms.js";
 
 export const EVENT_FROM_DAYS = 7; // 何日先から（直前は値段を変えても間に合わない）
 export const EVENT_TO_DAYS = 90; // 何日先まで
@@ -107,17 +107,17 @@ export function eventNights(today) {
 
 /** ある夜の部屋のふさがり方。部屋が決まっていない予約は「どこか1部屋」として数える */
 export function occupancy(reservations, night, rooms) {
+  const names = roomCodes(rooms);
   const known = new Set();
   const ids = [];
   let unknown = 0;
   for (const r of reservations) {
     if (!isConfirmed(r) || !covers(r, night)) continue;
     ids.push(r.id);
-    if (ROOMS.includes(r.room)) known.add(r.room);
+    if (names.includes(r.room)) known.add(r.room);
     else unknown += 1;
   }
-  const names = ROOMS.slice(0, rooms);
-  const free = Math.max(0, rooms - known.size - unknown);
+  const free = Math.max(0, names.length - known.size - unknown);
   return {
     night,
     taken: known.size + unknown,
@@ -247,10 +247,11 @@ export function monthTakeHome(view, reservations, cleaningFee) {
 
 /** 予約と予約のあいだに1泊だけ空いた夜（部屋ごと）。今日より後〜90日先 */
 export function findGaps(reservations, today, rooms) {
+  const codes = roomCodes(rooms);
   const to = addDays(today, GAP_TO_DAYS);
   const conf = reservations.filter(isConfirmed);
   const out = [];
-  for (const room of ROOMS.slice(0, rooms)) {
+  for (const room of codes) {
     const list = conf.filter((r) => r.room === room).sort((a, b) => a.checkin_date.localeCompare(b.checkin_date));
     for (let i = 0; i + 1 < list.length; i++) {
       const a = list[i];
@@ -259,7 +260,7 @@ export function findGaps(reservations, today, rooms) {
       const night = a.checkout_date;
       if (night <= today || night > to) continue;
       // その夜にかかる予約が、ほかにある（部屋未定・同じ部屋）なら、空いているとは言えない
-      if (conf.some((r) => covers(r, night) && (r.room === room || !ROOMS.includes(r.room)))) continue;
+      if (conf.some((r) => covers(r, night) && (r.room === room || !codes.includes(r.room)))) continue;
       out.push({ room, night, before: a, after: b });
     }
   }
@@ -272,13 +273,14 @@ const OWNER_FACT = fact("決めるのは", "値段と条件を決めて予約サ
  * 決裁箱に置く「値付け」の知らせ。
  * @param {object} p
  * @param {string} p.today
- * @param {object} p.inn {rooms, cleaning_fee, min_price}
+ * @param {object} p.inn {rooms, room_list, cleaning_fee, min_price}（room_list＝登録した部屋。無ければ rooms の数だけ A から）
  * @param {object[]} p.reservations 予約（room・amount_gross・status などを含む。名前は読まない）
  * @param {object[]} p.lines 予約サイトの明細の行
  * @param {object} p.counter dayCounter の結果
  */
 export function pricingItems({ today, inn, reservations, lines = [], counter }) {
-  const rooms = Number(inn?.rooms ?? 1);
+  const rooms = Array.isArray(inn?.room_list) && inn.room_list.length ? roomCodes(inn.room_list) : roomCodes(Number(inn?.rooms ?? 1));
+  const label = (code) => roomLabel(inn?.room_list, code);
   const cleaning = inn?.cleaning_fee == null ? null : Number(inn.cleaning_fee);
   const minPrice = inn?.min_price == null ? null : Number(inn.min_price);
   const rates = rateList(lines);
@@ -308,7 +310,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
   for (const ev of eventNights(today)) {
     const occ = ev.nights.map((n) => occupancy(reservations, n, rooms)).filter((o) => o.free > 0);
     if (!occ.length) continue;
-    const roomsText = (o) => (o.free_rooms ? `${o.free}部屋（${o.free_rooms.join("・")}）` : `${o.free}部屋`);
+    const roomsText = (o) => (o.free_rooms ? `${o.free}部屋（${o.free_rooms.map(label).join("・")}）` : `${o.free}部屋`);
     const facts = [
       fact("行事", ev.name),
       fact("空いている夜", occ.map((o) => `${jpDate(o.night)}：${roomsText(o)}`).join("／")),
@@ -339,7 +341,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
   for (const g of findGaps(reservations, today, rooms)) {
     if (eventSet.has(g.night)) continue; // 上げどきの夜は、下げる話をしない
     const facts = [
-      fact("部屋", g.room),
+      fact("部屋", label(g.room)),
       fact("空いている夜", `${jpDate(g.night)}（1泊だけ）`),
       fact("前後の予約", `前：${g.before.id}（${OTA_JA[g.before.ota] ?? "予約サイト"}）が${jpDate(g.before.checkout_date)}に出発／後：${g.after.id}（${OTA_JA[g.after.ota] ?? "予約サイト"}）が${jpDate(g.after.checkin_date)}に到着`),
       fact("埋めるには", "連泊の条件（何泊から泊まれるか）をゆるめる・少し下げると埋まりやすい1泊です"),
@@ -354,7 +356,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       ref_key: `price_gap:${g.room}:${g.night}`,
       kind: "price_gap",
       level: "info",
-      title: `${jpDate(g.night)}の部屋${g.room}が、予約と予約のあいだで1泊だけ空いています`,
+      title: `${jpDate(g.night)}の${label(g.room)}が、予約と予約のあいだで1泊だけ空いています`,
       facts,
       target_id: null,
       link: "kpi",

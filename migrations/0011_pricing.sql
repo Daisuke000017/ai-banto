@@ -33,7 +33,7 @@ CREATE TABLE price_reviews (
   decision_id INTEGER NOT NULL,
   ref_key TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('price_event', 'price_gap')),
-  room TEXT CHECK (room IS NULL OR room IN ('A', 'B')),
+  room TEXT CHECK (room IS NULL OR (length(room) = 1 AND room BETWEEN 'A' AND 'Z')),
   nights_json TEXT NOT NULL,                -- 対象の夜（日付の並び）
   before_json TEXT NOT NULL,                -- 押したときに、もう入っていた予約の番号
   free_room_nights INTEGER NOT NULL,        -- 押したときに空いていた「部屋×夜」の数

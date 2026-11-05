@@ -11,9 +11,13 @@ DELETE FROM stay_nights;
 DELETE FROM tax_drafts;
 DELETE FROM minpaku_reports;
 DELETE FROM reservations;
+DELETE FROM rooms;
 DELETE FROM inn_profile;
 
-INSERT INTO inn_profile (id, name, type, rooms, address, lat, lng, checkin_method_json, house_rules_json, allowed_promises_json, taxi_info_json, owner_contact_json, fixed_arrival_json, infants_taxable, fiscal_year_start, cosleep_free_exempt, cancel_fee_treatment, tax_start_date, tax_rate, cleaning_checkout_time, cleaning_checkin_time, cleaning_fee, min_price) VALUES (1, 'しおさいの家（架空）', '家主不在型', 2, '宮崎県宮崎市青島（架空の住所）', 31.803, 131.469, '{"type":"keybox","code_ref":"SECRET:KEYBOX_CODE"}', '["22時以降は静かに","室内禁煙","ごみは分別して玄関の箱へ"]', '["タオルの追加","チェックアウト後の荷物預かり（12時まで）"]', '{"name":"架空タクシー","note":"電話番号は画面に出さない"}', '{"channel":"airbnb_message"}', NULL, 1, '04-01', 0, 'penalty', '2026-07-01', 200, '10:00', '15:00', 5000, 9000);
+INSERT INTO inn_profile (id, name, type, rooms, address, lat, lng, checkin_method_json, house_rules_json, allowed_promises_json, taxi_info_json, owner_contact_json, fixed_arrival_json, infants_taxable, fiscal_year_start, cosleep_free_exempt, cancel_fee_treatment, tax_start_date, tax_rate, cleaning_checkout_time, cleaning_checkin_time, cleaning_fee, min_price, notification_no) VALUES (1, 'しおさいの家（架空）', '家主不在型', 2, '宮崎県宮崎市青島（架空の住所）', 31.803, 131.469, '{"type":"keybox","code_ref":"SECRET:KEYBOX_CODE"}', '["22時以降は静かに","室内禁煙","ごみは分別して玄関の箱へ"]', '["タオルの追加","チェックアウト後の荷物預かり（12時まで）"]', '{"name":"架空タクシー","note":"電話番号は画面に出さない"}', '{"channel":"airbnb_message"}', NULL, 1, '04-01', 0, 'penalty', '2026-07-01', 200, '10:00', '15:00', 5000, 9000, 'M000000000');
+
+INSERT INTO rooms (code, name, sort_order) VALUES ('A', '部屋A', 1);
+INSERT INTO rooms (code, name, sort_order) VALUES ('B', '部屋B', 2);
 
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R01', 'airbnb', 'DEMO-0001', '架空ゲスト01', '2026-04-29', '2026-05-02', 3, 2, 0, 0, 'ja', 'unknown', NULL, '{"JP":2}', 54000, 'A', 'confirmed', 0, 0, NULL);
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R02', 'booking', 'DEMO-0002', '架空ゲスト02', '2026-05-03', '2026-05-05', 2, 4, 0, 0, 'zh-TW', 'unknown', NULL, '{"TW":4}', 48000, 'A', 'confirmed', 0, 0, NULL);

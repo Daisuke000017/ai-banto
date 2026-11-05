@@ -60,6 +60,8 @@ import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
 import { stayCalendar } from "./lib/calendar.js";
+import { checkRoomName, MAX_ROOMS, nextRoomCode } from "./lib/rooms.js";
+import { checkInnPatch } from "./lib/inn-settings.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
   confirmBookingEmail,
@@ -127,9 +129,22 @@ class HttpError extends Error {
   }
 }
 
+// 宿の設定に、登録した部屋（rooms 表）を添えて返す
+// - room_list：使っている部屋（{code, name}）。rooms＝その数（部屋の表が空なら、宿の設定の数のまま）
+// - all_rooms：使っていない部屋も含めた全部（設定の画面用）
 async function loadInn(env) {
-  return (await env.DB.prepare("SELECT * FROM inn_profile WHERE id = 1").first()) ?? {};
+  const [inn, rows] = await Promise.all([
+    env.DB.prepare("SELECT * FROM inn_profile WHERE id = 1").first(),
+    env.DB.prepare("SELECT code, name, sort_order, active FROM rooms ORDER BY sort_order, code").all(),
+  ]);
+  const all = rows.results ?? [];
+  const room_list = all.filter((r) => r.active === 1).map(({ code, name }) => ({ code, name }));
+  const base = inn ?? {};
+  return room_list.length ? { ...base, rooms: room_list.length, room_list, all_rooms: all } : { ...base, room_list: [], all_rooms: all };
 }
+
+// 部屋の並び：登録した部屋があればそれ、無ければ宿の設定の数（A から順）
+const roomsOf = (inn) => (inn.room_list?.length ? inn.room_list : Number(inn.rooms ?? 1));
 
 // 宿泊者の名前はここで読まない（数えるのにも、AIにも要らないため）
 const RES_COLUMNS = `id, ota, checkin_date, checkout_date, adults, children, infants, cosleep_free,
@@ -224,7 +239,7 @@ async function handleGet(url, env, today) {
       rates: rateList(lines.results),
       take_home: monthTakeHome(view, res.results, cleaningFee),
       pace: pacePlan(dayCounter(nights.results, today, rules), today),
-      reviews: reviewCompare(reviews.results, res.results, lines.results, cleaningFee, rooms),
+      reviews: reviewCompare(reviews.results, res.results, lines.results, cleaningFee, roomsOf(inn)),
     };
     return json({ ...view, open_discrepancies: open?.n ?? 0, statements_loaded: lines.results.length > 0, pricing });
   }
@@ -264,7 +279,12 @@ async function handleGet(url, env, today) {
     )
       .bind(`${month}-31`, `${month}-01`)
       .all();
-    return json({ ...stayCalendar(results, month, today), window: cleaningWindow(inn) });
+    // 止めた部屋でも、その月に泊まりがあれば列に出す（過去の予約が「部屋未定」に見えないように）
+    const used = new Set(results.map((r) => r.room).filter(Boolean));
+    const list = inn.room_list.length
+      ? [...inn.room_list, ...inn.all_rooms.filter((r) => r.active !== 1 && used.has(r.code)).map(({ code, name }) => ({ code, name }))]
+      : null;
+    return json({ ...stayCalendar(results, month, today, list ?? roomsOf(inn)), room_list: list ?? [], window: cleaningWindow(inn) });
   }
   if (p === "/api/reservations") {
     // これからの予約（今日より後に出発する・取り消していない）。名前は読まない
@@ -290,6 +310,7 @@ async function handleGet(url, env, today) {
       })),
     });
   }
+  if (p === "/api/settings") return json(await settingsView(env, today));
   if (p === "/api/drill") return json(await drillState(env, today));
   if (p === "/api/eval/results") return json(await evalResults(env.DB));
   if (p === "/api/team/runs") {
@@ -727,7 +748,7 @@ async function handleDecisionPost(request, url, env, ctx) {
   if (rv) {
     try {
       const inn = await loadInn(env);
-      const decided = await decideReview({ db: env.DB, id: Number(rv[1]), choice: body.choice, rooms: Number(inn.rooms) });
+      const decided = await decideReview({ db: env.DB, id: Number(rv[1]), choice: body.choice, rooms: roomsOf(inn) });
       return json({ decided, ...(await listDecisions(env.DB)) });
     } catch (e) {
       if (e instanceof DecisionError) throw new HttpError(e.status, e.message);
@@ -841,6 +862,90 @@ async function handleMoneyPost(request, url, env) {
   }
 }
 
+// ---- 宿と部屋の設定（オーナーが画面で入れる）。AIは使わない ----
+const INN_FIELDS = ["name", "address", "notification_no", "cleaning_checkout_time", "cleaning_checkin_time", "cleaning_fee", "min_price"];
+
+async function settingsView(env, today) {
+  const inn = await loadInn(env);
+  const { results } = await env.DB.prepare(
+    "SELECT room, COUNT(*) AS n FROM reservations WHERE status = 'confirmed' AND checkout_date > ? AND room IS NOT NULL GROUP BY room",
+  )
+    .bind(today)
+    .all();
+  const upcoming = Object.fromEntries((results ?? []).map((r) => [r.room, r.n]));
+  return {
+    inn: Object.fromEntries(INN_FIELDS.map((k) => [k, inn[k] ?? null])),
+    rooms: inn.all_rooms.map((r) => ({ code: r.code, name: r.name, active: r.active === 1, upcoming: upcoming[r.code] ?? 0 })),
+    max_rooms: MAX_ROOMS,
+  };
+}
+
+async function handleSettingsPost(request, url, env, today) {
+  const p = url.pathname;
+  const body = await readJsonBody(request, url);
+  const inn = await loadInn(env);
+  const all = inn.all_rooms;
+  // 宿の設定の「部屋の数」も、使っている部屋の数にそろえる
+  const syncCount = (activeCount) => env.DB.prepare("UPDATE inn_profile SET rooms = ? WHERE id = 1").bind(activeCount);
+
+  if (p === "/api/settings/inn") {
+    const checked = checkInnPatch(body, inn);
+    if (checked.error) throw new HttpError(400, checked.error);
+    const keys = Object.keys(checked.values);
+    await env.DB.prepare(`UPDATE inn_profile SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = 1`)
+      .bind(...keys.map((k) => checked.values[k]))
+      .run();
+    return json(await settingsView(env, today));
+  }
+
+  if (p === "/api/rooms") {
+    const named = checkRoomName(body.name);
+    if (named.error) throw new HttpError(400, named.error);
+    const code = nextRoomCode(all);
+    if (!code) throw new HttpError(400, `部屋は${MAX_ROOMS}部屋までです`);
+    const order = all.reduce((m, r) => Math.max(m, r.sort_order), 0) + 1;
+    const active = all.filter((r) => r.active === 1).length + 1;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO rooms (code, name, sort_order) VALUES (?, ?, ?)").bind(code, named.name, order),
+      syncCount(active),
+    ]);
+    return json(await settingsView(env, today));
+  }
+
+  const m = p.match(/^\/api\/rooms\/([A-Z])$/);
+  if (m) {
+    const room = all.find((r) => r.code === m[1]);
+    if (!room) throw new HttpError(404, "その部屋は見つかりません");
+    const stmts = [];
+    if ("name" in body) {
+      const named = checkRoomName(body.name);
+      if (named.error) throw new HttpError(400, named.error);
+      stmts.push(env.DB.prepare("UPDATE rooms SET name = ? WHERE code = ?").bind(named.name, room.code));
+    }
+    if ("active" in body) {
+      if (typeof body.active !== "boolean") throw new HttpError(400, "active は true か false で送ってください");
+      const others = all.filter((r) => r.active === 1 && r.code !== room.code).length;
+      if (!body.active && room.active === 1) {
+        if (others === 0) throw new HttpError(400, `「${room.name}」は最後の1部屋なので止められません`);
+        const n = await env.DB.prepare(
+          "SELECT COUNT(*) AS n FROM reservations WHERE room = ? AND status = 'confirmed' AND checkout_date > ?",
+        )
+          .bind(room.code, today)
+          .first();
+        if ((n?.n ?? 0) > 0) throw new HttpError(400, `「${room.name}」には、これからの予約が${n.n}件あるので止められません。先に予約の部屋を移してください`);
+      }
+      stmts.push(env.DB.prepare("UPDATE rooms SET active = ? WHERE code = ?").bind(body.active ? 1 : 0, room.code));
+      stmts.push(syncCount(others + (body.active ? 1 : 0)));
+    }
+    if (!stmts.length) throw new HttpError(400, "変える項目がありません");
+    await env.DB.batch(stmts);
+    return json(await settingsView(env, today));
+  }
+  return null;
+}
+
+const isSettingsPath = (p) => p === "/api/settings/inn" || p === "/api/rooms" || p.startsWith("/api/rooms/");
+
 const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
 
 // 画面のファイル（public/）。安全のヘッダーを付けて返す
@@ -888,6 +993,9 @@ export default {
         if (res) return res;
       } else if (request.method === "POST" && (url.pathname.startsWith("/api/drafts") || url.pathname === "/api/guest-links" || url.pathname === "/api/drill")) {
         const res = await handlePost(request, url, env);
+        if (res) return res;
+      } else if (request.method === "POST" && isSettingsPath(url.pathname)) {
+        const res = await handleSettingsPost(request, url, env, today);
         if (res) return res;
       } else if (request.method === "POST" && url.pathname.startsWith("/api/booking-emails")) {
         const res = await handleBookingEmailPost(request, url, env, today);

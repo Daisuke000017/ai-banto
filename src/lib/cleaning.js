@@ -4,6 +4,7 @@
 // - 部屋が決まっていない予約（予約メールから入れたもの）は「部屋が決まっていません」と出す
 // - 見るだけ。割り当て・通知・勤怠・給与・備品は扱わない
 import { addDays, parseDate } from "./dates.js";
+import { DEFAULT_ROOMS, roomCodes } from "./rooms.js";
 
 export const CLEANING_DAYS = 21; // 今日から3週間
 export const DEFAULT_CHECKOUT_TIME = "10:00";
@@ -18,8 +19,6 @@ export function cleaningWindow(inn = {}) {
   return { checkout: out, checkin: inT };
 }
 
-const roomOf = (r) => (r.room === "A" || r.room === "B" ? r.room : null);
-const roomOrder = (room) => (room === "A" ? 0 : room === "B" ? 1 : 2);
 
 /**
  * 今日から days 日のあいだの清掃の日を返す（今日を含む）
@@ -27,8 +26,11 @@ const roomOrder = (room) => (room === "A" ? 0 : room === "B" ? 1 : 2);
  * - turnover：同じ部屋に同じ日のチェックインがある（間の時間に清掃）
  * - check_room：部屋が決まっていない予約がからみ、同じ日にチェックインがある（入れ替えか確かめる）
  */
-export function cleaningDays(reservations, today, inn = {}, days = CLEANING_DAYS) {
+export function cleaningDays(reservations, today, inn = {}, days = CLEANING_DAYS, rooms = inn?.room_list?.length ? inn.room_list : DEFAULT_ROOMS) {
   parseDate(today);
+  const list = roomCodes(rooms);
+  const roomOf = (r) => (list.includes(r.room) ? r.room : null);
+  const roomOrder = (room) => (room == null ? list.length : list.indexOf(room));
   const to = addDays(today, days - 1);
   const live = reservations.filter((r) => r.status !== "cancelled");
   const items = [];

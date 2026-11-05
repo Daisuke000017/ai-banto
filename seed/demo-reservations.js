@@ -31,7 +31,15 @@ export const innProfile = {
   // 値付けの助言（経営企画）：清掃費1回いくら・最低価格（これ以下では売らない）。架空の値
   cleaning_fee: 5000,
   min_price: 9000,
+  // 民泊の届出番号（定期報告のファイルに入る）。架空の番号（M＋数字9けたの形だけ合わせた）
+  notification_no: "M000000000",
 };
+
+// 部屋（宿の設定で登録する）。記号はプログラムが付け、名前はオーナーが付ける
+export const rooms = [
+  { code: "A", name: "部屋A", sort_order: 1 },
+  { code: "B", name: "部屋B", sort_order: 2 },
+];
 
 const g = (n) => `架空ゲスト${n}`;
 

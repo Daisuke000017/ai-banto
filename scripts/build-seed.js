@@ -4,7 +4,7 @@
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { innProfile, reservations } from "../seed/demo-reservations.js";
+import { innProfile, reservations, rooms } from "../seed/demo-reservations.js";
 import { stayNightRows } from "../src/lib/counting.js";
 import { daysBetween } from "../src/lib/dates.js";
 
@@ -43,11 +43,14 @@ export function buildSeedSql() {
     "DELETE FROM tax_drafts;",
     "DELETE FROM minpaku_reports;",
     "DELETE FROM reservations;",
+    "DELETE FROM rooms;",
     "DELETE FROM inn_profile;",
     "",
     insert("inn_profile", Object.keys(innProfile), innProfile),
     "",
   ];
+  for (const r of rooms) lines.push(insert("rooms", ["code", "name", "sort_order"], r));
+  lines.push("");
   for (const r of reservations) {
     lines.push(insert("reservations", RES_COLS, { ...r, nights: daysBetween(r.checkin_date, r.checkout_date) }));
   }

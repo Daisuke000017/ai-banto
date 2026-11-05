@@ -779,7 +779,17 @@ function reportCard(r) {
 
 // ---- 清掃が必要な日（M18）：見るだけ。プログラムが台帳から数える ----
 
-const ROOM = { A: "部屋A", B: "部屋B" };
+// 部屋の名前：宿と部屋の設定（/api/settings）から読む。読めないときは「部屋A」のように記号から作る
+const ROOM_NAMES = new Map([["A", "部屋A"], ["B", "部屋B"]]);
+const roomName = (room) => (room == null ? "部屋未定" : ROOM_NAMES.get(room) ?? `部屋${room}`);
+const learnRooms = (list) => {
+  for (const r of list ?? []) ROOM_NAMES.set(r.code, r.name);
+};
+// 部屋の色：並びの1番目は紺、2番目は水色、3番目からは灰色（色だけに頼らず、名前でも出す）
+const roomTone = (rooms, room) => {
+  const i = rooms.indexOf(room);
+  return room == null ? "unknown" : i === 1 ? "b" : i >= 2 ? "c" : "a";
+};
 
 function daysFrom(today, iso) {
   const t = (s) => Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
@@ -820,7 +830,7 @@ function cleaningCard(d) {
           return el("li", { cls: i.turnover ? "is-turnover" : "" }, [
             el("div", { cls: "clean-date" }, [el("b", { text: jpDate(i.date) }), el("span", { text: whenText(n) })]),
             el("div", { cls: "clean-body" }, [
-              el("p", { cls: "clean-room" }, [el("b", { text: ROOM[i.room] ?? "部屋が決まっていません" }), `${OTA[i.ota] ?? i.ota ?? ""}のお客様がチェックアウト`]),
+              el("p", { cls: "clean-room" }, [el("b", { text: i.room ? roomName(i.room) : "部屋が決まっていません" }), `${OTA[i.ota] ?? i.ota ?? ""}のお客様がチェックアウト`]),
               i.turnover
                 ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `チェックアウト〜チェックインの間（${w.checkout}〜${w.checkin}）に清掃`])
                 : el("p", { cls: "clean-sub", text: `${w.checkout}以降に清掃（この日、同じ部屋のチェックインはありません）` }),
@@ -842,8 +852,8 @@ function cleaningCard(d) {
 // 1か月を7列の表で出す（横スクロールなし）。日を押すと、その日の部屋ごとの様子を下に出す。
 // 部屋は色だけでなく「A」「B」の文字で出す。宿泊者の名前は出さない（サーバーも読まない）
 
-const CAL_ROOMS = ["A", "B", null];
-const roomName = (room) => ROOM[room] ?? "部屋未定";
+// カレンダーに並べる部屋（記号）。開いた月の答え（rooms）で入れ替える
+let CAL_LIST = ["A", "B"];
 
 async function showCalendar() {
   const p = $("panel-calendar");
@@ -851,6 +861,8 @@ async function showCalendar() {
   p.replaceChildren(...head, loading("プログラムが数えています"));
   try {
     const d = await api(`/api/calendar?month=${encodeURIComponent(state.calMonth)}`);
+    learnRooms(d.room_list);
+    CAL_LIST = d.rooms;
     if (!d.days.some((x) => x.date === state.calDay)) {
       const first = d.days.find((x) => x.is_today) ?? d.days.find((x) => x.stays.length || x.departures.length) ?? d.days[0];
       state.calDay = first.date;
@@ -918,14 +930,13 @@ function calCard(d) {
   // 開いたとき最初に見えるのはカレンダー。月の合計は、カレンダーの下に細い1列で出す
   const card = el("article", { cls: "card cal-card" });
   const totals = el("dl", { cls: "nums cal-totals", attrs: { "aria-label": `${shortMonth(d.month)}の合計` } }, [
-    num("部屋A", s.nights.A, "泊"),
-    num("部屋B", s.nights.B, "泊"),
+    ...CAL_LIST.map((code) => num(roomName(code), s.nights[code] ?? 0, "泊")),
     s.nights.unknown ? num("部屋未定", s.nights.unknown, "泊", "is-warn") : null,
     num("チェックアウト", s.departures, "件"),
   ]);
   if (!s.reservations) card.append(el("p", { cls: "state", text: `${shortMonth(d.month)}に泊まる予約はまだありません` }));
   if (d.overlaps.length) {
-    const where = d.overlaps.map((o) => `${jpDate(o.date, false)}（${o.rooms.map((r) => ROOM[r]).join("・")}）`).join("、");
+    const where = d.overlaps.map((o) => `${jpDate(o.date, false)}（${o.rooms.map(roomName).join("・")}）`).join("、");
     card.append(el("p", { cls: "notice danger", text: `同じ部屋に2つの予約が重なっている夜があります：${where}。台帳を確かめてください` }));
   }
 
@@ -996,8 +1007,7 @@ function calLegend(view, f) {
           f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替え（同じ日に次の人が入る）"]) : null,
         ]
       : [
-          el("li", {}, [sw("lane a"), "上の線：部屋Aの泊まり"]),
-          el("li", {}, [sw("lane b"), "下の線：部屋Bの泊まり"]),
+          ...CAL_LIST.map((room, i) => el("li", {}, [sw(`lane ${roomTone(CAL_LIST, room)}`), `上から${i + 1}本目：${roomName(room)}の泊まり`])),
           f.hasUnknown ? el("li", {}, [sw("lane unknown"), "部屋未定の泊まり"]) : null,
           el("li", {}, [sw("clean"), "清掃の日"]),
           f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替えの日"]) : null,
@@ -1038,10 +1048,7 @@ function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
   const byNo = new Map(d.days.map((x) => [dayNo(x.date), x]));
   const lo = Math.max(start, first);
   const hi = Math.min(start + n - 1, last);
-  const rooms = [
-    ["A", "部屋A"],
-    ["B", "部屋B"],
-  ];
+  const rooms = CAL_LIST.map((code) => [code, roomName(code)]);
   if (books.some((b) => !b.r.room)) rooms.push(["none", "未定"]);
   const laneCount = (key) => Math.max(1, ...books.filter((b) => b.key === key).map((b) => b.lanes()));
   const rowOf = new Map();
@@ -1097,7 +1104,7 @@ function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
     if (co < lo || ci > hi) continue;
     const s = ci >= lo ? colOf(ci) + 1 : colOf(lo);
     const e = co <= hi ? colOf(co) + 1 : colOf(hi) + 2;
-    const cls = ["tl-bar", b.r.room === "B" ? "room-b" : "", !b.r.room ? "unknown" : "", b.over ? "over" : "", ci < lo ? "cont-l" : "", co > hi ? "cont-r" : ""].filter(Boolean).join(" ");
+    const cls = ["tl-bar", b.r.room ? `room-${roomTone(CAL_LIST, b.r.room)}` : "", !b.r.room ? "unknown" : "", b.over ? "over" : "", ci < lo ? "cont-l" : "", co > hi ? "cont-r" : ""].filter(Boolean).join(" ");
     const label = `${roomName(b.r.room)}：${OTA[b.r.ota] ?? b.r.ota ?? "予約"}、${jpDate(b.r.checkin_date, false)}から${jpDate(b.r.checkout_date, false)}まで${b.r.nights}泊（${PEOPLE(b.r)}）${b.over ? "。重なりあり" : ""}`;
     // 月の境目で切れた短い切れ端（1日半より短い）は文字を出さない。読み上げ用の説明は残す
     put(
@@ -1129,12 +1136,12 @@ function calMonthGrid(d, pickDay, hasUnknown) {
   const grid = el("div", { cls: "cal cal-min", attrs: { role: "group", "aria-label": `${jpMonth(d.month)}の宿泊カレンダー。日を押すと、その日の部屋の様子が下に出ます` } });
   for (const w of WD) grid.append(el("span", { cls: "cal-wd", text: w, attrs: { "aria-hidden": "true" } }));
   for (let i = 0; i < d.first_weekday; i++) grid.append(el("span", { cls: "cal-blank", attrs: { "aria-hidden": "true" } }));
-  const lanes = hasUnknown ? ["A", "B", null] : ["A", "B"];
+  const lanes = hasUnknown ? [...CAL_LIST, null] : CAL_LIST;
   for (const day of d.days) {
     const lane = (room) => {
       const am = day.departures.some((r) => sameRoom(r.room, room)) || day.stays.some((st) => sameRoom(st.room, room) && !st.arrives);
       const pm = day.stays.filter((st) => sameRoom(st.room, room)).length;
-      const cls = ["mn-lane", room === "A" ? "a" : room === "B" ? "b" : "unknown", pm > 1 ? "over" : ""].filter(Boolean).join(" ");
+      const cls = ["mn-lane", roomTone(CAL_LIST, room), pm > 1 ? "over" : ""].filter(Boolean).join(" ");
       return el("span", { cls, attrs: { "aria-hidden": "true" } }, [el("span", { cls: am ? "h on" : "h" }), el("span", { cls: pm ? "h on" : "h" })]);
     };
     const turn = day.departures.some((r) => r.room && day.stays.some((st) => st.arrives && st.room === r.room));
@@ -1188,9 +1195,9 @@ function calRoomCard(name, state, busy, lines) {
 
 // 読み上げ用：その日の様子を言葉で
 function calDayLabel(day) {
-  const parts = ["A", "B"].map((room) => {
+  const parts = CAL_LIST.map((room) => {
     const n = day.stays.filter((s) => s.room === room).length;
-    return `${ROOM[room]} ${n > 1 ? `${n}件重なり` : n ? "泊まり" : "空き"}`;
+    return `${roomName(room)} ${n > 1 ? `${n}件重なり` : n ? "泊まり" : "空き"}`;
   });
   const unknown = day.stays.filter((s) => !s.room).length;
   if (unknown) parts.push(`部屋未定 ${unknown}件`);
@@ -1202,7 +1209,7 @@ function calDayLabel(day) {
 function calDetail(d, day) {
   const w = d.window;
   const items = [];
-  for (const room of CAL_ROOMS) {
+  for (const room of [...CAL_LIST, null]) {
     const stays = day.stays.filter((s) => s.room === room);
     const outs = day.departures.filter((r) => r.room === room);
     if (room === null && !stays.length && !outs.length) continue;
@@ -1226,7 +1233,7 @@ function calDetail(d, day) {
       );
     }
     if (room === null) lines.push(el("p", { cls: "notice warn", text: "部屋が決まっていない予約です。台帳で部屋を確かめてください" }));
-    if (room && stays.length > 1) lines.push(el("p", { cls: "notice danger", text: `${ROOM[room]}に${stays.length}つの予約が重なっています。台帳を確かめてください` }));
+    if (room && stays.length > 1) lines.push(el("p", { cls: "notice danger", text: `${roomName(room)}に${stays.length}つの予約が重なっています。台帳を確かめてください` }));
     const state = stays.length > 1 ? "重なり" : stays.length ? "泊まりあり" : "空き";
     items.push(calRoomCard(roomName(room), state, stays.length > 0, lines));
   }
@@ -1234,6 +1241,121 @@ function calDetail(d, day) {
   const n = daysFrom(d.today, day.date);
   if (day.departures.length && n >= 0 && n < 21) out.push(el("div", { cls: "btns" }, [btn("清掃が必要な日を開く", () => go("cleaning"), "btn small")]));
   return out;
+}
+
+// ---- 宿と部屋の設定：オーナーが入れる。AIは使わない ----
+// 届出番号は定期報告のCSVに、清掃の時間はカレンダーと清掃の画面に、部屋はカレンダー・清掃・値付けの知らせに使う
+
+const INN_FORM = [
+  ["name", "宿の名前", "text", { maxlength: "40", required: true }],
+  ["address", "住所（任意）", "text", { maxlength: "100" }],
+  ["notification_no", "届出番号（定期報告のCSVに入ります）", "text", { maxlength: "30", inputmode: "latin", placeholder: "例：M000000000" }],
+  ["cleaning_checkout_time", "チェックアウトの時刻", "time", {}],
+  ["cleaning_checkin_time", "チェックインの時刻", "time", {}],
+  ["cleaning_fee", "清掃1回の費用（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
+  ["min_price", "1泊のいちばん安い値段（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
+];
+
+async function showSettings() {
+  const p = $("panel-settings");
+  p.replaceChildren(loading("読み込んでいます"));
+  try {
+    renderSettings(await api("/api/settings"));
+  } catch (err) {
+    p.replaceChildren(errorBox(err, showSettings));
+  }
+}
+
+// 設定が変わったら、ほかの画面は次に開いたときに読み直す
+function settingsChanged(d) {
+  learnRooms(d.rooms);
+  $("inn-name").textContent = d.inn.name ?? "宿の名前が未設定です";
+  state.loaded = { settings: true };
+}
+
+function renderSettings(d) {
+  $("panel-settings").replaceChildren(el("h2", { cls: "h2", text: "宿と部屋の設定" }), innCard(d), roomsCard(d));
+}
+
+function innCard(d) {
+  const inputs = {};
+  const problems = el("div", { attrs: { "aria-live": "polite" } });
+  const row = ([k, label, type, extra]) => {
+    const i = el("input", { cls: "text-in", attrs: { id: `set-${k}`, type, ...extra } });
+    i.value = d.inn[k] ?? "";
+    inputs[k] = i;
+    return el("div", { cls: "field" }, [el("label", { text: label, attrs: { for: `set-${k}` } }), i]);
+  };
+  const save = async () => {
+    // 変えた項目だけ送る
+    const patch = {};
+    for (const [k, i] of Object.entries(inputs)) if (i.value !== String(d.inn[k] ?? "")) patch[k] = i.value;
+    if (!Object.keys(patch).length) {
+      problems.replaceChildren(el("p", { cls: "notice info", text: "変わったところはありません" }));
+      return;
+    }
+    try {
+      const r = await api("/api/settings/inn", { method: "POST", body: patch });
+      settingsChanged(r);
+      renderSettings(r);
+      toast("宿の設定を保存しました");
+    } catch (err) {
+      problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  };
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "宿の設定" }),
+    el("div", { cls: "fields" }, INN_FORM.map(row)),
+    problems,
+    el("div", { cls: "btns" }, [btn("保存する", save, "btn primary")]),
+  ]);
+}
+
+function roomsCard(d) {
+  const problems = el("div", { attrs: { "aria-live": "polite" } });
+  const send = async (path, body, done) => {
+    try {
+      const r = await api(path, { method: "POST", body });
+      settingsChanged(r);
+      renderSettings(r);
+      toast(done);
+    } catch (err) {
+      problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+    }
+  };
+  const items = d.rooms.map((room) => {
+    const name = el("input", { cls: "text-in", attrs: { id: `room-${room.code}`, type: "text", maxlength: "20" } });
+    name.value = room.name;
+    const facts = [
+      el("span", { cls: room.active ? "pill ok" : "pill", text: room.active ? "使っている" : "止めている" }),
+      room.upcoming ? `これからの予約 ${room.upcoming}件` : "これからの予約はありません",
+    ];
+    return el("li", { cls: `room-item${room.active ? "" : " is-off"}` }, [
+      el("div", { cls: "field" }, [el("label", { text: `部屋の名前（記号 ${room.code}）`, attrs: { for: `room-${room.code}` } }), name]),
+      el("p", { cls: "room-facts" }, facts),
+      el("div", { cls: "btns" }, [
+        btn("名前を保存", () => send(`/api/rooms/${room.code}`, { name: name.value }, "部屋の名前を保存しました"), "btn small"),
+        room.active
+          ? btn("この部屋を止める", () => send(`/api/rooms/${room.code}`, { active: false }, `${room.name}を止めました`), "btn small")
+          : btn("また使う", () => send(`/api/rooms/${room.code}`, { active: true }, `${room.name}をまた使います`), "btn small"),
+      ]),
+    ]);
+  });
+  const addName = el("input", { cls: "text-in", attrs: { id: "room-new", type: "text", maxlength: "20", placeholder: "例：離れ（2階）" } });
+  const canAdd = d.rooms.length < d.max_rooms;
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "部屋" }),
+    el("p", { cls: "lead", text: "カレンダー・清掃・値付けの知らせは、ここで使っている部屋で数えます" }),
+    el("ul", { cls: "room-list" }, items),
+    problems,
+    canAdd
+      ? el("div", { cls: "room-add" }, [
+          el("div", { cls: "field" }, [el("label", { text: "部屋を足す（名前）", attrs: { for: "room-new" } }), addName]),
+          el("div", { cls: "btns" }, [btn("部屋を足す", () => send("/api/rooms", { name: addName.value }, "部屋を足しました"), "btn primary")]),
+        ])
+      : el("p", { cls: "notice info", text: `部屋は${d.max_rooms}部屋までです` }),
+    el("p", { cls: "notice info", text: "部屋の記号（A・B…）は自動で付き、あとから変わりません。止めた部屋は、過去の予約のために残ります。これからの予約がある部屋は、先に予約の部屋を移すまで止められません" }),
+  ]);
 }
 
 // ---- ゲスト連絡 ----
@@ -2797,8 +2919,8 @@ function watchDecisions() {
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval };
-const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績" };
+const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings };
+const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -2851,7 +2973,8 @@ async function loadFacts() {
     ),
     api(`/api/calendar?month=${m}`).then((d) => {
       const t = d.days.find((x) => x.is_today);
-      const rooms = t ? ["A", "B"].filter((r) => t.stays.some((s) => s.room === r)).map((r) => ROOM[r]) : [];
+      learnRooms(d.room_list);
+      const rooms = t ? d.rooms.filter((r) => t.stays.some((s) => s.room === r)).map(roomName) : [];
       const unknown = t ? t.stays.some((s) => !s.room) : false;
       const tonight = rooms.length ? `${rooms.join("・")}が泊まり` : unknown ? "部屋未定の予約あり" : "空いています";
       // 「10月の／予約3件」と割れないよう、後半は1つのかたまりにする
@@ -2881,6 +3004,8 @@ async function start() {
     state.today = d.today;
     $("inn-name").textContent = d.inn_name ?? "宿の名前が未設定です";
     $("today").textContent = jpDate(d.today);
+    // 部屋の名前（読めなくても、記号の名前で続ける）
+    await api("/api/settings").then((s) => learnRooms(s.rooms)).catch(() => {});
   } catch (err) {
     $("inn-name").textContent = "読み込めませんでした";
     $("panel-home").replaceChildren(errorBox(err, () => location.reload()));

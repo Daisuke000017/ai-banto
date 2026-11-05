@@ -4,11 +4,11 @@
 // - 同じ部屋・同じ夜に2つの予約が重なっていたら、知らせる（台帳の間違いの見つけ役）
 // - 見るだけ。宿泊者の名前は受け取っても出さない（決まった欄だけを写す）
 import { addDays, daysBetween, parseDate } from "./dates.js";
+import { DEFAULT_ROOMS, roomCodes } from "./rooms.js";
 
-export const ROOMS = ["A", "B"];
+export const ROOMS = DEFAULT_ROOMS;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-const roomOf = (r) => (ROOMS.includes(r.room) ? r.room : null);
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 /** その月の日付（"YYYY-MM-DD"）を1日から順に返す */
@@ -20,10 +20,10 @@ export function daysOfMonth(month) {
 }
 
 // 画面に出してよい欄だけを写す（名前などは写さない）
-function brief(r) {
+function brief(r, rooms) {
   return {
     reservation_id: r.id,
-    room: roomOf(r),
+    room: rooms.includes(r.room) ? r.room : null,
     ota: r.ota ?? null,
     checkin_date: r.checkin_date,
     checkout_date: r.checkout_date,
@@ -40,9 +40,12 @@ function brief(r) {
  * - stays：その夜に泊まっている予約（arrives＝この日にチェックイン、night_no＝何泊目）
  * - departures：この日にチェックアウトする予約（この日は清掃の日）
  * - overlap_rooms：同じ部屋に2つ以上の予約が重なっている部屋
+ * rooms：宿の部屋の記号の並び（無ければ A・B）
  */
-export function stayCalendar(reservations, month, today) {
+export function stayCalendar(reservations, month, today, rooms = ROOMS) {
   parseDate(today);
+  const list = roomCodes(rooms);
+  const order = (room) => (room == null ? list.length : list.indexOf(room));
   const dates = daysOfMonth(month);
   const live = reservations
     .filter((r) => r.status !== "cancelled")
@@ -55,9 +58,9 @@ export function stayCalendar(reservations, month, today) {
         return false;
       }
     })
-    .map(brief);
+    .map((r) => brief(r, list));
 
-  const nights = { A: 0, B: 0, unknown: 0 };
+  const nights = Object.fromEntries([...list.map((c) => [c, 0]), ["unknown", 0]]);
   const touched = new Set();
   const overlaps = [];
   const days = dates.map((date) => {
@@ -73,20 +76,20 @@ export function stayCalendar(reservations, month, today) {
       touched.add(s.reservation_id);
     }
     for (const r of departures) touched.add(r.reservation_id);
-    const overlap_rooms = ROOMS.filter((room) => stays.filter((s) => s.room === room).length > 1);
+    const overlap_rooms = list.filter((room) => stays.filter((s) => s.room === room).length > 1);
     if (overlap_rooms.length) overlaps.push({ date, rooms: overlap_rooms });
     return { date, weekday: parseDate(date).getUTCDay(), is_today: date === today, stays, departures, overlap_rooms };
   });
 
-  const roomNights = dates.length * ROOMS.length;
-  const booked = nights.A + nights.B;
+  const roomNights = dates.length * list.length;
+  const booked = list.reduce((n, c) => n + nights[c], 0);
   return {
     month,
     today,
     from: dates[0],
     to: dates[dates.length - 1],
     first_weekday: days[0].weekday,
-    rooms: ROOMS,
+    rooms: list,
     days,
     summary: {
       reservations: touched.size,
@@ -100,6 +103,3 @@ export function stayCalendar(reservations, month, today) {
   };
 }
 
-function order(room) {
-  return room === "A" ? 0 : room === "B" ? 1 : 2;
-}
