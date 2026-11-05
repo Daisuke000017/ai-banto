@@ -293,6 +293,8 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       return out;
     }
     if (guide) {
+      // カードに見える1行（くわしい手取りの内訳は「くわしく」の中）
+      out.push(fact("目安の値段", `1泊${yen(guide.price)}`));
       out.push(fact("手取りの目安", `1泊${yen(guide.price)}で${nights}泊なら、1泊あたり手元に ${takeHomeText(guide.price, nights, rates, cleaning)}（手数料と清掃費${yen(cleaning)}を引いた額）`, true));
       out.push(fact("目安の元", `これまでに泊まり終えた予約${guide.reservations}件（${guide.nights}泊）の1泊あたりの平均を、千円単位にした額です`));
     }

@@ -137,8 +137,7 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
   .eval-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .eval-grid .card { margin: 0; }
-.eval-card.is-main { border-top: 4px solid var(--glow); }
-.eval-headline { margin-top: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r); border-left: 4px solid var(--glow); background: var(--glow-bg); }
+.eval-headline { margin-top: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r); background: var(--glow-bg); }
 /* 結論の1文は「、」と数字の前の空白でだけ折る（auto-phrase だと「間／違い」で折れた）。入りきらないときだけ最後の手段で折る */
 .eval-headline-main { font-size: 18px; font-weight: 700; line-height: 1.7; color: var(--ink); word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .eval-headline-sub { font-size: 16px; line-height: 1.7; color: var(--ink-sub); margin-top: var(--s1); word-break: auto-phrase; text-wrap: pretty; }
@@ -153,8 +152,9 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .cell-label { display: none; }
 /* 清掃が必要な日（M18）：1日1行。入れ替えの日は --glow の左の太線と明るい地で目立たせ、言葉でも「入れ替え」と出す */
 .clean-list { list-style: none; padding: 0; display: grid; gap: var(--s3); margin: var(--s4) 0; }
-.clean-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--r); }
-.clean-list li.is-turnover { border-left-color: var(--glow); background: var(--glow-bg); }
+.clean-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1) var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r); }
+/* 左の色の線は意味のあるもの（入れ替えの日）だけに付ける */
+.clean-list li.is-turnover { border-left: 4px solid var(--glow); background: var(--glow-bg); }
 .clean-date { display: flex; align-items: baseline; gap: var(--s2); }
 .clean-date b { font-size: 20px; }
 .clean-date span { font-size: 16px; color: var(--ink-sub); }
@@ -181,9 +181,14 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
   border-radius: 0 var(--r) var(--r) 0;
 }
 .credits { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s2); font-size: 15px; color: var(--ink-sub); }
-/* 担当の名札：小さな角丸の札。上の線だと見出しの下線に見えたので、明るい黄色の地と細い枠にする */
-.role-pill { font-weight: 700; color: var(--ink); background: var(--glow-bg); border: 1px solid var(--glow); border-radius: 999px; padding: 0 var(--s2); line-height: 1.6; }
+/* 担当の名前：押せる札に見えないよう、枠も地の色も付けず、太字の黒い文字だけにする（まわりは灰色の文字） */
+.role-pill { font-weight: 700; color: var(--ink); }
 .dx .credits { margin-top: var(--s2); }
+/* 値付けカードの「くわしく」：毎回同じ説明はここにたたむ。出典は名前だけの紺のリンク */
+.dx-more .kv { margin-top: var(--s2); }
+.dx-more a { color: var(--action); text-underline-offset: 3px; }
+/* 画面を移るだけのボタンは、枠なしの紺の下線つき文字（決めるボタンと見分ける） */
+.btn.link { min-height: 44px; margin-top: var(--s2); padding: 0; border-color: transparent; background: none; color: var(--action); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 .credit { display: inline-flex; align-items: center; gap: var(--s1); white-space: nowrap; }
 /* 決裁箱の表：プログラムが数えた数字の行の印（押せない、灰色の小さな字） */
 .calc-mark { display: block; font-size: 15px; color: var(--ink-sub); }
@@ -289,9 +294,10 @@ main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 .notice, .lead, .team-note, .meter p, .num-sub, .state, .sub, .row-fact { word-break: auto-phrase; text-wrap: pretty; }
 
 /* 札 */
+/* 押せない札はどれも「角の小さな四角・枠なし」にそろえる（丸い札はボタンに見えるため） */
 .pill {
   display: inline-block;
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 0 var(--s2);
   font-size: 15px;
   font-weight: 700;
@@ -328,6 +334,10 @@ main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 /* 選ぶ */
 .pick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
 .pick label { font-size: 16px; color: var(--ink-sub); }
+/* デモの見本を選ぶ所：本文と混ざらないよう、点線の囲みに入れて上下をあける。選ぶ欄はボタンの形（濃い枠・太字） */
+.demo-pick { margin: var(--s4) 0; padding: var(--s3); border: 1px dashed var(--line); border-radius: var(--r); background: var(--bg); }
+.demo-pick label { font-weight: 700; color: var(--ink); }
+.demo-pick select { border-color: var(--ink-sub); font-weight: 700; }
 select {
   min-height: 56px;
   padding: var(--s1) var(--s3);
@@ -394,7 +404,7 @@ summary { cursor: pointer; color: var(--action); font-weight: 700; min-height: 5
   color: var(--warn);
   background: var(--warn-bg);
   padding: 0 var(--s2);
-  border-radius: 999px;
+  border-radius: 4px;
   vertical-align: middle;
   margin-left: var(--s1);
 }
@@ -451,7 +461,7 @@ summary { cursor: pointer; color: var(--action); font-weight: 700; min-height: 5
 
 .kpi-link { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); }
 .kpi-countries { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); padding: 0; }
-.kpi-countries li { display: flex; gap: var(--s2); align-items: baseline; background: var(--bg); border-radius: var(--r); padding: var(--s1) var(--s3); font-size: 16px; }
+.kpi-countries li { display: flex; gap: var(--s2); align-items: baseline; background: var(--bg); border-radius: 4px; padding: var(--s1) var(--s3); font-size: 16px; }
 .kpi-countries strong { font-variant-numeric: tabular-nums; }
 
 /* ゲスト連絡 */
@@ -640,11 +650,9 @@ body.drill::after {
 .drill-panel { display: grid; gap: var(--s4); margin-bottom: var(--s5); }
 .card.evac { border-left: 6px solid var(--danger); }
 
-/* 決裁箱（M20）：左の線で急ぎ具合。色だけでなく「急ぎ」などの札でも伝える */
-.dx { border-left: 6px solid var(--line); }
-.dx.dx-urgent { border-left-color: var(--danger); }
-.dx.dx-warn { border-left-color: var(--warn); }
-.dx.dx-info { border-left-color: var(--ok); }
+/* 決裁箱（M20）：左の線は「急ぎ」「確認待ち」だけ。お知らせは線なしの白いカード。色だけでなく札でも伝える */
+.dx.dx-urgent { border-left: 6px solid var(--danger); }
+.dx.dx-warn { border-left: 6px solid var(--warn); }
 .dx-title { margin-top: var(--s2); margin-bottom: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
 .dx-last { font-size: 16px; color: var(--ink-sub); margin-top: var(--s2); }
 .dx-done { display: grid; gap: var(--s2); font-size: 16px; line-height: 1.6; }
@@ -715,9 +723,10 @@ body.drill::after {
   .cal-day { min-height: 60px; padding: 4px 1px; }
 }
 
-/* 見かたの切り替え（帯／月） */
+/* 見かたの切り替え（帯／月）：白い枠のボタン。選んでいる方は紺の太い枠と紺の文字（濃い色は予約の帯だけに使う） */
 .cal-views { display: flex; gap: var(--s2); margin: 0 0 var(--s3); }
-.cal-views .btn[aria-pressed="true"] { background: var(--action); border-color: var(--action); color: #fff; }
+.cal-views .btn { background: var(--surface); color: var(--ink-sub); border-color: var(--line); }
+.cal-views .btn[aria-pressed="true"] { background: var(--surface); border: 2px solid var(--action); color: var(--action); font-weight: 700; }
 
 /* 見かたの説明の見本。カレンダーの中だけ横長にする（今月の数字の 14px 角の札に効かせない） */
 .cal-legend .sw { display: inline-block; flex: none; width: 32px; height: 14px; border-radius: 4px; background: var(--chart-1); }

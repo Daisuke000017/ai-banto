@@ -274,7 +274,8 @@ select.bad { border-color: var(--danger); }
 .ask-count { margin: 0; font-size: 15px; color: var(--ink-sub); text-align: right; font-variant-numeric: tabular-nums; }
 #ask-form, .ask-card { display: flex; flex-direction: column; gap: 10px; }
 .ask-dests { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.ask-judge { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.3; }
+.ask-judge { margin: 0; font-size: 26px; font-weight: 700; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+.ask-icon { flex: none; }
 .ask-judge:focus { outline: none; }
 .ask-q { margin: 0; color: var(--ink-sub); }
 .ask-missed { margin: 0; font-weight: 700; }

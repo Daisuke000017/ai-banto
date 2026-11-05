@@ -1591,7 +1591,7 @@ function pasteCard(primary) {
   const subject = el("input", { cls: "text-in", attrs: { type: "text", maxlength: "300", "aria-label": "件名", placeholder: "件名（なくても読めます）" } });
   const body = el("textarea", { cls: "mail-body", attrs: { "aria-label": "メールの本文", maxlength: "12000", placeholder: "予約サイトから届いたメールの本文を、ここに貼り付けてください" } });
   const msg = el("div");
-  const pick = el("div", { cls: "pick", attrs: { hidden: true } });
+  const pick = el("div", { cls: "pick demo-pick", attrs: { hidden: true } });
   const go = btn("番頭に読ませる", read, primary ? "btn primary" : "btn");
 
   // デモのときだけ、見本のメールを選べる
@@ -1871,7 +1871,7 @@ function importCard(statements, primary) {
   const kindSel = el("select", { attrs: { id: "stmt-kind" } }, [el("option", { text: "自動で見分ける", attrs: { value: "" } })]);
   for (const [v, label] of Object.entries(STMT_KIND)) kindSel.append(el("option", { text: label, attrs: { value: v } }));
   const fileIn = el("input", { cls: "file-in", attrs: { type: "file", id: "stmt-file", accept: ".csv,.tsv,.txt,text/csv" } });
-  const pick = el("div", { cls: "pick", attrs: { hidden: true } });
+  const pick = el("div", { cls: "pick demo-pick", attrs: { hidden: true } });
   const msg = el("div");
   const go = btn("経理担当に列を見てもらう", read, primary ? "btn primary" : "btn");
   let samples = [];
@@ -2025,6 +2025,9 @@ function resultCard(statements, discs, primary) {
   const card = el("article", { cls: "card" }, [
     el("h2", { text: "照合の結果" }),
     el("p", { cls: "lead", text: "台帳・予約サイトの明細・通帳を、プログラムが突き合わせます（数えるのはAIではありません）" }),
+    // 押すボタンは結果より上に置く（結果を読んでから下までさがして押す形にしない）
+    el("div", { cls: "btns" }, [go]),
+    msg,
   ]);
   if (s) {
     card.append(
@@ -2044,7 +2047,6 @@ function resultCard(statements, discs, primary) {
     card.append(el("p", { cls: "state", text: "明細を読み込みました。「照合する」を押すと、プログラムが突き合わせます" }));
   }
   if (s && s.total === s.matched) card.append(el("p", { cls: "notice ok", text: "台帳・明細・通帳がすべて合っています" }));
-  card.append(msg, el("div", { cls: "btns" }, [go]));
   if (discs.length) {
     card.append(
       el("h3", { cls: "draft-label", text: "ずれ（1件ずつ確かめてください）" }),
@@ -2273,10 +2275,9 @@ const EVAC_STEPS = [
 const drill = { active: false, busy: false };
 let view = "home";
 
-// 「チームの成績」では赤いボタンが見出しより先に目に入るので、訓練していないときは出さない。
-// 訓練中は「訓練を終える」が押せるよう、どの画面でも出す
+// 訓練のボタンは、どの画面でも同じ場所に出す（押す前は控えめな灰色なので、見出しより目立たない）
 function syncDrillBtn() {
-  $("drill-btn").hidden = view === "eval" && !drill.active;
+  $("drill-btn").hidden = false;
 }
 
 async function loadDrill() {
@@ -2604,19 +2605,47 @@ function factList(facts, cls) {
   ]));
 }
 
+// 値付けのカードで毎回同じになる説明。カードを短くするため「くわしく」の中へたたむ
+const PRICE_DETAIL = new Set(["手取りの目安", "最低価格なら", "目安の元", "180日の方針", "180日の数え方", "決めるのは", "出典"]);
+
+// 「名前 https://…／名前 https://…」を、名前だけの短いリンクにする（URLをそのまま本文に出さない）
+function sourceLinks(text) {
+  const parts = String(text).split("／").map((s) => s.trim().match(/^(.*?)\s+(https:\/\/\S+)$/));
+  if (parts.some((m) => !m)) return [text];
+  return parts.flatMap((m, i) => [
+    i ? "／" : null,
+    el("a", { text: m[1], attrs: { href: m[2], target: "_blank", rel: "noopener" } }),
+  ]).filter(Boolean);
+}
+
+function priceDetails(facts) {
+  if (!facts.length) return null;
+  return el("details", { cls: "dx-more" }, [
+    el("summary", { text: "くわしく（手取り・180日・出典）" }),
+    el("dl", { cls: "kv dx-price" }, facts.flatMap((f) => [
+      el("dt", {}, keepTogether(f.label)),
+      el("dd", {}, f.label === "出典" ? sourceLinks(f.value) : keepTogether(f.value)),
+    ])),
+  ]);
+}
+
 // 値付けの知らせ：OK の代わりに「見直した／このまま」。押したことを記録するだけで、予約も帳簿も変えない
 function priceCard(d, lv, cls, msg, main = false) {
+  const facts = d.facts ?? [];
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv }), el("span", { cls: "pill", text: "値付け" })]),
     el("h3", { cls: "card-title dx-title" }, keepTogether(d.title)),
     dxCredits(d),
-    factList(d.facts, "kv dx-price"),
-    el("p", { cls: "sub", text: "予約サイトで値段や条件を見直したら「見直した」、そのままにするなら「このまま」を押してください。押したことを記録して、あとで今月の数字で比べます" }),
+    // 行事の名前が見出しにもう出ているときは、表でくり返さない
+    factList(facts.filter((f) => !PRICE_DETAIL.has(f.label) && !(f.label === "行事" && d.title.includes(f.value))), "kv dx-price"),
+    priceDetails(facts.filter((f) => PRICE_DETAIL.has(f.label))),
+    el("p", { cls: "sub", text: "押しても値段は変わりません（記録のみ）" }),
     el("div", { cls: "btns" }, [
       btn("見直した", () => decideReview(d, "reviewed", msg), main ? "btn primary" : "btn"),
       btn("このまま", () => decideReview(d, "kept", msg), "btn"),
-      btn("今月の数字を見る", () => openFrom(d), "btn"),
     ]),
+    // 画面の移動は文字のリンクにして、決めるボタン（見直した・このまま）と分ける
+    btn("今月の数字を見る →", () => openFrom(d), "btn link"),
     msg,
   ]);
 }

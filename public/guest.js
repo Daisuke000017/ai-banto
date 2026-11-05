@@ -1104,7 +1104,20 @@ const AT = {
 };
 const ASK_DESTS = ["udo", "aoshima_shrine", "miyazaki_st"];
 const ASK_MAX = 200;
-const JUDGE_ICON = { ok: "✅", walk: "✅", tight: "⚠️", ng: "❌", safety: "🚑", limit: "ℹ️", unknown: "ℹ️" };
+// 判定の見出しの印：絵文字ではなく線のアイコン（色は見出しの文字と同じ）。丸の中に ✓・!・×・i
+const JUDGE_ICON = { ok: "check", walk: "check", tight: "warn", ng: "cross", safety: "warn", limit: "info", unknown: "info" };
+const JUDGE_MARK = {
+  check: ["M7.5 12.5l3 3 6-6.5"],
+  warn: ["M12 7v6", "M12 16.5v.5"],
+  cross: ["M8.5 8.5l7 7", "M15.5 8.5l-7 7"],
+  info: ["M12 11v6", "M12 7.5v.5"],
+};
+function judgeIcon(kind) {
+  const s = svg("svg", { viewBox: "0 0 24 24", width: 28, height: 28, class: "ask-icon", "aria-hidden": "true", fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  svg("circle", { cx: 12, cy: 12, r: 10 }, s);
+  for (const d of JUDGE_MARK[kind] ?? JUDGE_MARK.info) svg("path", { d }, s);
+  return s;
+}
 const JUDGE_CLASS = { ok: "ask-ok", walk: "ask-ok", tight: "ask-tight", ng: "ask-ng", safety: "ask-ng" };
 
 const charCount = (s) => [...s].length;
@@ -1194,7 +1207,7 @@ function renderAnswer(res, q) {
   const j = res.judgment;
   const card = $("ask-card");
   card.className = `card ask-card ${JUDGE_CLASS[j] ?? "ask-info"}`;
-  $("ask-judge").textContent = `${JUDGE_ICON[j] ?? "ℹ️"} ${a.judge[j] ?? a.judge.unknown}`;
+  $("ask-judge").replaceChildren(judgeIcon(JUDGE_ICON[j]), document.createTextNode(a.judge[j] ?? a.judge.unknown));
 
   // 何を聞いたか（行き先・戻りたい時刻。自由な文はそのまま出さない）
   const parts = [];
