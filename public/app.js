@@ -78,8 +78,22 @@ async function api(path, { method = "GET", body } = {}) {
   } catch {
     data = null;
   }
+  // ログインが切れた・まだのときは、ログイン画面へ
+  if (res.status === 401) location.assign("/login");
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
+}
+
+// ログアウト（ログインを使っているときだけ、下の注意書きの横に出す）
+async function setupLogout() {
+  const s = await api("/api/session").catch(() => null);
+  if (!s?.login_enabled) return;
+  const b = btn("ログアウト", async () => {
+    b.disabled = true;
+    await api("/api/logout", { method: "POST", body: {} }).catch(() => {});
+    location.assign("/login");
+  }, "btn small logout");
+  document.querySelector("footer.notes")?.append(b);
 }
 
 // サーバーの言葉（決まった日本語）だけを出す。5xx や通信の失敗は、決まった文にする
@@ -3335,6 +3349,7 @@ async function start() {
   for (const li of $("team").children) li.querySelector(".chip").addEventListener("click", () => toggleTeamLog(li.dataset.role));
   pullTeam();
   loadDrill();
+  setupLogout();
 }
 
 start();
