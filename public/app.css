@@ -14,12 +14,17 @@
   --danger-bg: #FCEAE7;
   --mask: #5B3F94;
   --mask-bg: #EEE8F8;
+  --out: #93324F;
+  --out-bg: #FBEAF0;
   --glow: #F2B33D;
   --glow-bg: #FFF6E2;
   --chart-1: #1F4E79;
   --chart-2: #6FA8DC;
   --chart-3: #B4BFCB;
   --soft: #E8EEF4;
+  /* 表の見出しの帯（日付・曜日の行）。土日の --soft より一段濃く、本体の行と分ける */
+  --head-bg: #D6E1ED;
+  --head-line: #9FB2C7;
   --r: 10px;
   --s1: 4px;
   --s2: 8px;
@@ -284,6 +289,7 @@ main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 .pill.warn { background: var(--warn-bg); color: var(--warn); }
 .pill.danger { background: var(--danger-bg); color: var(--danger); }
 .pill.mask { background: var(--mask-bg); color: var(--mask); }
+.pill.out { background: var(--out-bg); color: var(--out); }
 
 /* ボタン：高さ 56px 以上。濃い塗りは1画面に1つ */
 .btns { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
@@ -620,8 +626,13 @@ body.drill::after {
 }
 
 /* 宿泊カレンダー（M21）：7列の表。横にはみ出さない。部屋は色だけでなく「A」「B」の文字で出す */
-.cal-card .nums { margin-bottom: var(--s4); }
-.cal-legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 0 var(--s3); padding: 0; font-size: 15px; color: var(--ink-sub); }
+/* 月の合計：カレンダーの下に細い1列（主役はカレンダー） */
+.cal-totals { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: var(--s3) 0 0; padding: var(--s2) var(--s3); background: var(--bg); border-radius: var(--r); }
+.cal-totals .num { display: flex; align-items: baseline; gap: var(--s1); background: none; padding: 0; border-radius: 0; }
+.cal-totals .num dt { font-size: 15px; }
+.cal-totals .num dd { font-size: 20px; }
+.cal-legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: var(--s2) 0 0; padding: 0; font-size: 15px; color: var(--ink-sub); }
+.cal-legend li { word-break: auto-phrase; text-wrap: pretty; }
 .cal-legend li { display: flex; align-items: center; gap: var(--s1); }
 .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-wd { text-align: center; font-size: 15px; color: var(--ink-sub); padding-bottom: 2px; }
@@ -648,8 +659,12 @@ body.drill::after {
 .cal-detail { margin-top: var(--s4); }
 .cal-detail-h { font-size: 20px; margin: 0 0 var(--s2); }
 .cal-rooms { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
-.cal-rooms > li { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s3); display: grid; gap: var(--s1); }
-.cal-rooms > li.is-busy { border-left: 6px solid var(--chart-1); }
+.cal-rooms > li { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.cal-room-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); }
+.cal-rooms > li.is-busy .cal-room-head { background: var(--head-bg); border-bottom: 2px solid var(--head-line); }
+.cal-room-state { font-size: 15px; font-weight: 700; color: var(--ink-sub); white-space: nowrap; }
+.cal-rooms > li.is-busy .cal-room-state { color: var(--action); }
+.cal-room-body { padding: var(--s3); display: grid; gap: var(--s1); }
 .cal-rooms p { margin: 0; font-size: 17px; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
 .cal-rooms .pill { margin-right: var(--s2); }
 .cal-rooms .notice { margin-top: var(--s1); font-size: 16px; }
@@ -674,7 +689,7 @@ body.drill::after {
 .sw.unknown { background: var(--warn-bg); outline: 2px solid var(--warn); outline-offset: -2px; }
 .sw.over { background: var(--danger-bg); outline: 2px solid var(--danger); outline-offset: -2px; }
 .sw.clean { width: 14px; background: transparent; border: 2px solid var(--ink-sub); border-radius: 3px; }
-.sw.clean.turn { background: var(--warn); border-color: var(--warn); }
+.sw.clean.turn { width: 16px; height: 16px; border: 3px solid var(--glow); border-radius: 4px; background: var(--glow-bg); }
 .sw.lane { height: 6px; border-radius: 3px; }
 .sw.lane.b { background: var(--chart-2); }
 
@@ -699,6 +714,9 @@ body.drill::after {
 /* 左の列（部屋の名前）は横にずらしても止まる。下じきで帯や土日の色を隠す */
 .tl-labbg { position: sticky; left: 0; z-index: 3; align-self: stretch; margin-bottom: -4px; background: var(--surface); box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25); }
 .tl-room { position: sticky; left: 0; }
+/* 日付・曜日の見出しの帯。土日・今日の縦の色はここで止め、下に線を引く */
+.tl-head { align-self: stretch; background: var(--head-bg); border-bottom: 2px solid var(--head-line); border-radius: 0 6px 0 0; }
+.tl-corner { position: sticky; left: 0; z-index: 4; align-self: stretch; background: var(--head-bg); border-bottom: 2px solid var(--head-line); border-radius: 6px 0 0 0; }
 .tl-bg { align-self: stretch; border-left: 1px solid var(--line); margin-bottom: -4px; }
 .tl-bg.is-sun, .tl-bg.is-sat { background: var(--soft); }
 .tl-bg.is-today { background: var(--glow-bg); }
@@ -763,8 +781,15 @@ body.drill::after {
   border-radius: 5px;
   background: var(--surface);
   cursor: pointer;
+  display: grid;
+  place-items: center;
 }
-.tl-clean.turn { background: var(--warn); border-color: var(--warn); }
+/* 入れ替え：黄色の枠に薄い黄色。少し大きくして目に入るように */
+.tl-clean.turn { width: 26px; height: 26px; border: 3px solid var(--glow); border-radius: 7px; background: var(--glow-bg); }
+/* 担当が決まった：緑にチェック。入れ替えは黄色の枠と緑の間に白いすき間を残す */
+.tl-clean.done { background: var(--ok); border-color: var(--ok); }
+.tl-clean.turn.done { background: var(--ok); border-color: var(--glow); box-shadow: inset 0 0 0 2px var(--surface); }
+.tl-clean.done::after { content: ""; width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: translateY(-1px) rotate(45deg); }
 .tl-clean[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: 2px; }
 
 /* 月で見る（文字なし）：1日を午前・午後に分けた細い線を部屋ごとに。清掃の日は四角い印 */
@@ -776,4 +801,6 @@ body.drill::after {
 .mn-lane.unknown .h.on { background: var(--warn); }
 .mn-lane.over .h.on { background: var(--danger); }
 .mn-clean { width: 12px; height: 12px; margin-top: auto; border: 2px solid var(--ink-sub); border-radius: 3px; }
-.mn-clean.turn { background: var(--warn); border-color: var(--warn); }
+.mn-clean.turn { width: 14px; height: 14px; border-color: var(--glow); background: var(--glow-bg); }
+.mn-clean.done { background: var(--ok); border-color: var(--ok); }
+.mn-clean.turn.done { border-color: var(--glow); box-shadow: inset 0 0 0 1.5px var(--surface); }

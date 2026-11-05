@@ -828,13 +828,13 @@ function calCard(d) {
   const hasUnknown = books.some((b) => !b.r.room);
   const hasOver = books.some((b) => b.over);
   const hasTurn = books.some((b) => b.turn);
-  const card = el("article", { cls: "card cal-card" }, [
-    el("dl", { cls: "nums" }, [
-      num("部屋A", s.nights.A, "泊"),
-      num("部屋B", s.nights.B, "泊"),
-      s.nights.unknown ? num("部屋未定", s.nights.unknown, "泊", "is-warn") : null,
-      num("チェックアウト", s.departures, "件", "", "チェックアウトの日は清掃の日です"),
-    ]),
+  // 開いたとき最初に見えるのはカレンダー。月の合計は、カレンダーの下に細い1列で出す
+  const card = el("article", { cls: "card cal-card" });
+  const totals = el("dl", { cls: "nums cal-totals", attrs: { "aria-label": `${shortMonth(d.month)}の合計` } }, [
+    num("部屋A", s.nights.A, "泊"),
+    num("部屋B", s.nights.B, "泊"),
+    s.nights.unknown ? num("部屋未定", s.nights.unknown, "泊", "is-warn") : null,
+    num("チェックアウト", s.departures, "件"),
   ]);
   if (!s.reservations) card.append(el("p", { cls: "state", text: `${shortMonth(d.month)}に泊まる予約はまだありません` }));
   if (d.overlaps.length) {
@@ -858,7 +858,7 @@ function calCard(d) {
       return b;
     }),
   );
-  card.append(views, calLegend(view, { hasUnknown, hasOver, hasTurn }));
+  card.append(views);
 
   // 押したもの（日 or 予約）の中身を下に出す
   const detail = el("div", { cls: "cal-detail", attrs: { "aria-live": "polite" } });
@@ -882,7 +882,12 @@ function calCard(d) {
     state.calStay = b.r.reservation_id;
     show();
   };
-  card.append(view === "bar" ? calTimeline(d, books, pickDay, pickStay) : calMonthGrid(d, pickDay, hasUnknown), detail);
+  card.append(
+    view === "bar" ? calTimeline(d, books, pickDay, pickStay) : calMonthGrid(d, pickDay, hasUnknown),
+    calLegend(view, { hasUnknown, hasOver, hasTurn }),
+    totals,
+    detail,
+  );
   show();
   card.append(
     el("details", {}, [el("summary", { text: "数え方" }), el("p", { cls: "notice info", text: d.how })]),
@@ -897,7 +902,7 @@ function calLegend(view, f) {
   const items =
     view === "bar"
       ? [
-          el("li", {}, [sw("bar"), "泊まり（左はしが入る日の午後、右はしが出る日の午前）"]),
+          el("li", {}, [sw("bar"), "泊まり（入る日の午後〜出る日の午前）"]),
           f.hasUnknown ? el("li", {}, [sw("bar unknown"), "部屋が決まっていない予約"]) : null,
           f.hasOver ? el("li", {}, [sw("bar over"), "同じ部屋で重なっている予約"]) : null,
           el("li", {}, [sw("clean"), "清掃の日（チェックアウトの日）"]),
@@ -922,7 +927,7 @@ function calTimeline(d, books, pickDay, pickStay) {
     { cls: "tl-scroll", attrs: { role: "region", tabindex: "0", "aria-label": `${jpMonth(d.month)}の宿泊の帯。横にずらせます。帯を押すと予約の中身、日付を押すとその日の様子が下に出ます` } },
     [calBlock(d, books, first, d.days.length, first, last, pickDay, pickStay)],
   );
-  const hint = el("p", { cls: "tl-hint", text: "横にずらすと、ほかの日も見られます", attrs: { "aria-hidden": "true" } });
+  const hint = el("p", { cls: "tl-hint", text: "横にずらせます", attrs: { "aria-hidden": "true" } });
   const wrap = el("div", { cls: "tl" }, [hint, scroller]);
   // 画面に出たあと：入りきらないときだけ案内を出し、選んでいる日（ふだんは今日）が左のほうに来るようにずらす
   let tries = 0;
@@ -970,6 +975,9 @@ function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
 
   // 左の列の下じき（横にずらしたとき、帯や土日の色がこの下を通る）
   put(el("span", { cls: "tl-labbg", attrs: { "aria-hidden": "true" } }), "1", `1 / ${cleanRow + 1}`);
+  // 日付・曜日の見出しの帯（本体の行と分けて見せる）。左上の角も同じ色にそろえる
+  put(el("span", { cls: "tl-head", attrs: { "aria-hidden": "true" } }), "2 / -1", "1");
+  put(el("span", { cls: "tl-corner", attrs: { "aria-hidden": "true" } }), "1", "1");
   // 日付の見出しと、背景（土日・今日）
   for (let no = start; no < start + n; no++) {
     const day = byNo.get(no);
@@ -1065,7 +1073,7 @@ function calStayDetail(d, b) {
   const w = d.window;
   const lines = [
     el("p", {}, [el("span", { cls: "pill ok", text: "チェックイン" }), `${jpDate(r.checkin_date)} ${w.checkin}から`]),
-    el("p", {}, [el("span", { cls: "pill", text: "チェックアウト" }), `${jpDate(r.checkout_date)} ${w.checkout}まで`]),
+    el("p", {}, [el("span", { cls: "pill out", text: "チェックアウト" }), `${jpDate(r.checkout_date)} ${w.checkout}まで`]),
     el("p", { text: `${r.nights}泊・${PEOPLE(r)}` }),
     b.turn
       ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `${jpDate(r.checkout_date, false)}の${w.checkout}〜${w.checkin}の間に清掃（同じ日に次の人が入ります）`])
@@ -1074,12 +1082,21 @@ function calStayDetail(d, b) {
     b.over ? el("p", { cls: "notice danger", text: `${roomName(r.room)}で別の予約と重なっています。台帳を確かめてください` }) : null,
   ];
   const out = [
-    el("h3", { cls: "cal-detail-h", text: `${roomName(r.room)}・${OTA[r.ota] ?? r.ota ?? "予約"}` }),
-    el("ul", { cls: "cal-rooms" }, [el("li", { cls: "is-busy" }, lines)]),
+    el("h3", { cls: "cal-detail-h", text: `${OTA[r.ota] ?? r.ota ?? ""}の予約` }),
+    el("ul", { cls: "cal-rooms" }, [calRoomCard(roomName(r.room), `${r.nights}泊`, true, lines)]),
   ];
   const n = daysFrom(d.today, r.checkout_date);
   if (n >= 0 && n < 21) out.push(el("div", { cls: "btns" }, [btn("清掃が必要な日を開く", () => go("cleaning"), "btn small")]));
   return out;
+}
+
+// 部屋のカード：上に見出しの帯（部屋名と様子）、下に中身
+function calRoomCard(name, state, busy, lines) {
+  const body = lines.filter(Boolean);
+  return el("li", { cls: busy ? "is-busy" : "" }, [
+    el("div", { cls: "cal-room-head" }, [el("p", { cls: "cal-room", text: name }), el("span", { cls: "cal-room-state", text: state })]),
+    body.length ? el("div", { cls: "cal-room-body" }, body) : null,
+  ]);
 }
 
 // 読み上げ用：その日の様子を言葉で
@@ -1103,7 +1120,7 @@ function calDetail(d, day) {
     const outs = day.departures.filter((r) => r.room === room);
     if (room === null && !stays.length && !outs.length) continue;
     const lines = [];
-    for (const r of outs) lines.push(el("p", {}, [el("span", { cls: "pill", text: "チェックアウト" }), `${OTA[r.ota] ?? r.ota ?? ""}（${PEOPLE(r)}）`]));
+    for (const r of outs) lines.push(el("p", {}, [el("span", { cls: "pill out", text: "チェックアウト" }), `${OTA[r.ota] ?? r.ota ?? ""}（${PEOPLE(r)}）`]));
     for (const st of stays) {
       lines.push(
         el("p", {}, [
@@ -1113,7 +1130,6 @@ function calDetail(d, day) {
         ]),
       );
     }
-    if (!stays.length && !outs.length) lines.push(el("p", { cls: "cal-free", text: "空いています" }));
     if (outs.length) {
       const turnover = room && stays.some((st) => st.arrives);
       lines.push(
@@ -1124,7 +1140,8 @@ function calDetail(d, day) {
     }
     if (room === null) lines.push(el("p", { cls: "notice warn", text: "部屋が決まっていない予約です。台帳で部屋を確かめてください" }));
     if (room && stays.length > 1) lines.push(el("p", { cls: "notice danger", text: `${ROOM[room]}に${stays.length}つの予約が重なっています。台帳を確かめてください` }));
-    items.push(el("li", { cls: stays.length ? "is-busy" : "" }, [el("p", { cls: "cal-room", text: roomName(room) }), ...lines]));
+    const state = stays.length > 1 ? "重なり" : stays.length ? "泊まりあり" : "空き";
+    items.push(calRoomCard(roomName(room), state, stays.length > 0, lines));
   }
   const out = [el("h3", { cls: "cal-detail-h", text: `${jpDate(day.date)}${day.is_today ? "・今日" : ""}` }), el("ul", { cls: "cal-rooms" }, items)];
   const n = daysFrom(d.today, day.date);
