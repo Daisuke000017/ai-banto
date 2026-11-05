@@ -187,7 +187,7 @@ export function buildPatrolItems(s) {
     });
   }
 
-  // 値付けの助言（経営企画）：AIは使わない。文はプログラムが決まった形で作る
+  // 値付けの助言（経営企画）：ここはプログラム。文は決まった形で作る（行事の候補はAIが探し、オーナーが OK したものだけが入る）
   if (s.pricing) items.push(...pricingItems(s.pricing));
 
   return items;
@@ -197,8 +197,12 @@ export function buildPatrolItems(s) {
 // DB を使う部分
 // ---------------------------------------------------------------------------
 
+/** オーナーが OK した行事の候補（AIが探したもの・デモの見本） */
+export const PRICE_EVENTS_SQL = `SELECT id, name, start_day, end_day, place, source_url, source_title, found_by
+  FROM price_event_candidates WHERE status = 'ok' ORDER BY start_day, id`;
+
 /** 値付けの助言に使う予約（名前は読まない） */
-const PRICE_RES_SQL = `SELECT id, ota, room, checkin_date, checkout_date, status, amount_gross, ota_reservation_no,
+export const PRICE_RES_SQL = `SELECT id, ota, room, checkin_date, checkout_date, status, amount_gross, ota_reservation_no,
   tax_collection, lodging_tax_collected, cancel_fee_amount FROM reservations ORDER BY checkin_date, id`;
 
 /** 決裁箱に残す中身。値付けの知らせは、どの夜の話か（review）も残す */
@@ -287,9 +291,10 @@ export async function runPatrol({ db, trigger, today, now, inn, rules, client, l
       lodging_tax_collected, nationalities_json, status, cancel_fee_amount, guest_changes_json FROM reservations ORDER BY checkin_date, id`).all(),
     db.prepare("SELECT COUNT(*) AS n FROM discrepancies WHERE status = 'open'").first(),
   ]);
-  const [priceRes, priceLines] = await Promise.all([
+  const [priceRes, priceLines, priceEvents] = await Promise.all([
     db.prepare(PRICE_RES_SQL).all(),
     db.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
+    db.prepare(PRICE_EVENTS_SQL).all(),
   ]);
   const counter = lib.dayCounter(nights.results ?? [], today, rules);
   const items = buildPatrolItems({
@@ -308,7 +313,7 @@ export async function runPatrol({ db, trigger, today, now, inn, rules, client, l
     counter,
     reports: nearestReportPeriod(today).map((p) => minpakuReport(reportRows.results ?? [], p, today)),
     openDiscrepancies: open?.n ?? 0,
-    pricing: { today, inn, reservations: priceRes.results ?? [], lines: priceLines.results ?? [], counter },
+    pricing: { today, inn, reservations: priceRes.results ?? [], lines: priceLines.results ?? [], counter, events: priceEvents.results ?? [] },
   });
 
   // ③ 決裁箱に入れる（同じものは入れ直さず、まだ決めていなければ事実だけ新しくする）

@@ -100,7 +100,10 @@ import {
   OWNER_CHECK,
 } from "./lib/arrival.js";
 import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
-import { DecisionError, decideOk, decideReview, listDecisions, runPatrol } from "./lib/patrol.js";
+import { DecisionError, decideOk, decideReview, listDecisions, PRICE_EVENTS_SQL, PRICE_RES_SQL, runPatrol } from "./lib/patrol.js";
+import { planLevels } from "./lib/price-levels.js";
+import { approveLevelPlan, latestLevelPlan, saveLevelPlan, suggestLevels } from "./lib/price-level-ai.js";
+import { decideEventCandidate, insertSampleEvents, listEventCandidates, searchEvents } from "./lib/price-events-ai.js";
 import { guidePrice, monthTakeHome, pacePlan, rateList, reviewCompare } from "./lib/pricing.js";
 import { MAX_RAW_BYTES, bytesToBinary, messageKeyOf, parseRawEmail, senderAllowed } from "./lib/mail-in.js";
 import { evalResults, teamRuns } from "./lib/eval.js";
@@ -928,6 +931,7 @@ async function handleMoneyPost(request, url, env) {
 // ---- 宿と部屋の設定（オーナーが画面で入れる）。AIは使わない ----
 const INN_FIELDS = [
   "name", "address", "notification_no", "cleaning_checkout_time", "cleaning_checkin_time", "cleaning_fee", "min_price",
+  "price_l1", "price_l2", "price_l3", "price_l4",
   // 宿泊税の申告書に書くこと
   "collector_address", "collector_name", "corporate_no", "inn_phone", "facility_no", "contact_name", "contact_phone",
 ];
@@ -1232,6 +1236,65 @@ async function handleCleanerPost(request, url, env, today) {
 
 const isCleanerPath = (p) => p === "/api/cleaners" || p.startsWith("/api/cleaners/") || p === "/api/cleaning/assign";
 
+// 料金のレベル（経営企画・2026-11-06）：読む・相談する・OK を押す
+const isPricePath = (p) => p === "/api/price-levels" || p.startsWith("/api/price-levels/") || p.startsWith("/api/price-events");
+
+async function priceInputs(env) {
+  const [inn, res, lines, events] = await Promise.all([
+    loadInn(env),
+    env.DB.prepare(PRICE_RES_SQL).all(),
+    env.DB.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
+    env.DB.prepare(PRICE_EVENTS_SQL).all(),
+  ]);
+  return { inn, reservations: res.results ?? [], lines: lines.results ?? [], events: events.results ?? [] };
+}
+
+async function priceView(env, today) {
+  const input = await priceInputs(env);
+  const plan = planLevels({ today, ...input });
+  const [latest, candidates] = await Promise.all([latestLevelPlan(env.DB), listEventCandidates(env.DB)]);
+  return { plan, latest, candidates, ai_ready: aiClient(env) != null, demo: Boolean(env.DEMO_TODAY) };
+}
+
+async function handlePriceGet(url, env, today) {
+  if (url.pathname !== "/api/price-levels") return null;
+  return json(await priceView(env, today));
+}
+
+async function handlePricePost(request, url, env, today) {
+  const p = url.pathname;
+  const body = await readJsonBody(request, url);
+  if (p === "/api/price-levels/suggest") {
+    if (body.market_note != null && typeof body.market_note !== "string") throw new HttpError(400, "周りの宿の値段は文字で入れてください");
+    const input = await priceInputs(env);
+    const res = await suggestLevels({ client: aiClient(env), db: env.DB, today, ...input, marketNote: body.market_note ?? "" });
+    if (res.source === "ai" || res.unavailable === "no_gray") await saveLevelPlan(env.DB, res);
+    return json({ result: res, ...(await priceView(env, today)) });
+  }
+  const ok = p.match(/^\/api\/price-levels\/(\d+)\/ok$/);
+  if (ok) {
+    const done = await approveLevelPlan(env.DB, Number(ok[1]), nowIso(env));
+    if (!done) throw new HttpError(409, "この案はもう決まっているか、見つかりません");
+    return json(await priceView(env, today));
+  }
+  if (p === "/api/price-events/search") {
+    const found = await searchEvents({ client: aiClient(env), db: env.DB, today });
+    return json({ found, ...(await priceView(env, today)) });
+  }
+  if (p === "/api/price-events/samples") {
+    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    const sample = await insertSampleEvents(env.DB, today);
+    return json({ sample, ...(await priceView(env, today)) });
+  }
+  const ev = p.match(/^\/api\/price-events\/(\d+)\/(ok|dismiss|undo)$/);
+  if (ev) {
+    const status = { ok: "ok", dismiss: "dismissed", undo: "candidate" }[ev[2]];
+    if (!(await decideEventCandidate(env.DB, Number(ev[1]), status, nowIso(env)))) throw new HttpError(404, "行事の候補が見つかりません");
+    return json(await priceView(env, today));
+  }
+  return null;
+}
+
 const isSettingsPath = (p) => p === "/api/settings/inn" || p === "/api/rooms" || p.startsWith("/api/rooms/");
 
 const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
@@ -1275,6 +1338,9 @@ export default {
       if (request.method === "GET" && isMoneyPath(url.pathname)) {
         const res = await handleMoneyGet(url, env);
         if (res) return res;
+      } else if (request.method === "GET" && isPricePath(url.pathname)) {
+        const res = await handlePriceGet(url, env, today);
+        if (res) return res;
       } else if (request.method === "GET") {
         const res = await handleGet(url, env, today);
         if (res) return res;
@@ -1289,6 +1355,9 @@ export default {
         if (res) return res;
       } else if (request.method === "POST" && isCleanerPath(url.pathname)) {
         const res = await handleCleanerPost(request, url, env, today);
+        if (res) return res;
+      } else if (request.method === "POST" && isPricePath(url.pathname)) {
+        const res = await handlePricePost(request, url, env, today);
         if (res) return res;
       } else if (request.method === "POST" && isSettingsPath(url.pathname)) {
         const res = await handleSettingsPost(request, url, env, today);

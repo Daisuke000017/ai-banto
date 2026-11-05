@@ -316,6 +316,8 @@ const REASON_JA = {
   promise_not_allowed: "約束できないこと",
   wrong_language: "言葉がちがう",
   unsafe: "安全でない書き方",
+  misleading_wording: "誤解を招く書き方",
+  weak_reason: "理由が弱い",
   other: "その他",
 };
 const WORD_JA = { facts: "材料", material: "材料", value: "答えの数", basis: "計算の説明", answer: "答え", checklist: "点検のめやす" };
@@ -470,6 +472,10 @@ export const TASK_JA = {
   booking_email_read: "予約メールの書き写し",
   ask_parse: "質問の読み取り",
   ask_explain: "行って戻れるかの説明",
+  price_levels: "グレーな夜の料金のレベル",
+  price_levels_audit: "料金のレベルの点検",
+  event_search: "宮崎市の行事をネットで探す",
+  event_read: "行事の候補の書き写し",
 };
 
 // 2分より前から「働き中」のままの行は、途中で止まったものとみなす

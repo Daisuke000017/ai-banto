@@ -176,3 +176,83 @@ export async function callJson({
   await finishRun(db, runId, { status: "failed", outputSummary: `形が違いました：${lastProblem}`.slice(0, 300), model: usedModel, tokensIn, tokensOut });
   throw new AiUnavailable("bad_output", "AIの答えが決まった形になりませんでした");
 }
+
+/**
+ * AIにネットで調べてもらい、文の答えと「実際に見たページ」の一覧を受け取る（形はまだ決めない）。
+ * - 見てよいサイトは allowedDomains だけ（公式のサイトに絞る）
+ * - 検索が長くて途中で止まった（pause_turn）ときは、同じ会話を送り直して続けてもらう（最大3回）
+ * - 見たページ（urls）はAIの答えではなく、検索の結果そのものから集める。あとでプログラムが「出典が本当に見たページか」を確かめる
+ * @returns {Promise<{text: string, urls: {url: string, title: string}[], runId: number|null, model: string}>}
+ */
+export async function callSearch({
+  client,
+  db,
+  agent,
+  task,
+  model,
+  system,
+  input,
+  allowedDomains,
+  maxUses = 5,
+  maxTokens = 4000,
+  parentRunId = null,
+  inputSummary = null,
+}) {
+  if (db && (await aiCallsToday(db)) >= DAILY_AI_CALL_LIMIT) {
+    throw new AiUnavailable("daily_limit", "今日のAIの上限に達しました（明日また使えます）");
+  }
+  const runId = await startRun(db, { agent, task, parentRunId, inputSummary, model });
+  const messages = [{ role: "user", content: JSON.stringify(input) }];
+  const tools = [{
+    type: "web_search_20260209",
+    name: "web_search",
+    max_uses: maxUses,
+    allowed_domains: allowedDomains,
+    user_location: { type: "approximate", city: "Miyazaki", region: "Miyazaki", country: "JP", timezone: "Asia/Tokyo" },
+  }];
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let usedModel = model;
+  const urls = new Map();
+  let text = "";
+
+  for (let turn = 0; turn < 4; turn++) {
+    let msg;
+    try {
+      msg = await client.beta.messages.create({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages,
+        tools,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      });
+    } catch (e) {
+      const message = describeApiError(e);
+      await finishRun(db, runId, { status: "failed", outputSummary: message, model: usedModel, tokensIn, tokensOut });
+      throw new AiUnavailable("api_error", message);
+    }
+    tokensIn += msg.usage?.input_tokens ?? 0;
+    tokensOut += msg.usage?.output_tokens ?? 0;
+    usedModel = msg.model ?? model;
+    for (const b of msg.content ?? []) {
+      if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
+        for (const r of b.content) if (r?.type === "web_search_result" && r.url) urls.set(r.url, { url: r.url, title: r.title ?? "" });
+      }
+    }
+    text += textOf(msg);
+    if (msg.stop_reason === "refusal") {
+      await finishRun(db, runId, { status: "failed", outputSummary: "AIが応じませんでした", model: usedModel, tokensIn, tokensOut });
+      throw new AiUnavailable("refusal", "AIがこの依頼に応じませんでした");
+    }
+    if (msg.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: msg.content });
+      continue;
+    }
+    await finishRun(db, runId, { status: "done", outputSummary: `ネットで調べました（見たページ ${urls.size}件）`, model: usedModel, tokensIn, tokensOut });
+    return { text, urls: [...urls.values()], runId, model: usedModel };
+  }
+  await finishRun(db, runId, { status: "failed", outputSummary: "検索が終わりませんでした", model: usedModel, tokensIn, tokensOut });
+  throw new AiUnavailable("bad_output", "AIの検索が時間内に終わりませんでした");
+}

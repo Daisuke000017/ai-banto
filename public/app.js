@@ -251,7 +251,7 @@ function renderTeamLog() {
           ]);
         }),
       )
-    : el("p", { cls: "state", text: a.agent === "keiei" ? "経営企画は、AIを使わずに働いています（値付けの目安・180日のペースはプログラムが計算して、今月の数字と決裁箱に出します）" : "まだ仕事の記録がありません" });
+    : el("p", { cls: "state", text: a.agent === "keiei" ? "経営企画の記録はまだありません（料金のレベルの相談や、宮崎市の行事探しをすると、ここに記録が出ます。手取り・180日のペースはプログラムが計算しています）" : "まだ仕事の記録がありません" });
   box.replaceChildren(
     el("div", { cls: "team-log-head" }, [el("h2", { cls: "card-title", text: `${name}の最近の仕事` }), close]),
     list,
@@ -414,12 +414,293 @@ function kpiKeepCard(d) {
 }
 
 // ---- 値付けの目安（経営企画）----
-// AIは使わない。数字と文はプログラムが決まった形で作る。値段を決めて予約サイトに入れるのはオーナー
+// 手取り・180日のペースはプログラムが計算する。料金のレベルは、はっきりした夜をプログラムが、
+// グレーな夜を経営企画（AI）が決め、監査役が確かめる。値段を決めて予約サイトに入れるのはオーナー
 
 function kpiPricing(d) {
   const pr = d.pricing;
   if (!pr) return [];
-  return [kpiPriceCard(d, pr), kpiReviewCard(pr.reviews)];
+  return [kpiPriceCard(d, pr), kpiLevelCard(), kpiReviewCard(pr.reviews)];
+}
+
+// ---- 料金のレベル（経営企画・2026-11-06）----
+const LEVEL_STEPS = [
+  [["keiei"], "経営企画が、はっきりしない夜のレベルを考えています"],
+  [["kansa"], "プログラムと監査役が、理由と書き方を確かめています"],
+];
+const EVENT_STEPS = [
+  [["keiei"], "経営企画が、宮崎市の公式サイトで行事を探しています"],
+  [["keiei"], "経営企画が、見つけた行事の日付と出典を書き写しています"],
+];
+const LEVEL_UNAVAILABLE = {
+  not_set: "料金のレベルの金額が入っていません。宿の設定でレベル1〜4の金額を入れてください",
+  no_gray: "はっきりしない夜がないので、相談することはありませんでした（プログラムの案のままです）",
+  no_key: "AIの鍵がないので、プログラムの案（はっきりしない夜はレベル2）を出しています",
+  daily_limit: "今日のAIの使用回数の上限に達しました。プログラムの案を出しています",
+  refusal: "AIがうまく答えられなかったので、プログラムの案を出しています",
+  bad_output: "AIがうまく答えられなかったので、プログラムの案を出しています",
+  api_error: "AIにつながらなかったので、プログラムの案を出しています",
+};
+const CROWD_JA = { large: "人出：多い", medium: "人出：ふつう", small: "人出：少なめ" };
+const lv = { result: null, note: null, busy: false };
+
+function kpiLevelCard() {
+  const holder = el("article", { cls: "card", attrs: { id: "level-card" } }, [loading("料金のレベルを読み込んでいます")]);
+  loadLevels(holder);
+  return holder;
+}
+
+async function loadLevels(holder = $("level-card")) {
+  if (!holder) return;
+  try {
+    renderLevels(holder, await api("/api/price-levels"));
+  } catch (err) {
+    holder.replaceChildren(el("h2", { cls: "card-title", text: "料金のレベル（経営企画）" }), errorBox(err, () => loadLevels(holder)));
+  }
+}
+
+// 画面に出す夜：相談した直後はその結果、そうでなければ最後の案（AIが選んだグレーな夜だけ）をプログラムの案に重ねる
+function levelNights(v) {
+  if (lv.result) return { nights: lv.result.nights, from: "result" };
+  const plan = v.plan;
+  if (!v.latest) return { nights: plan.nights, from: "plan" };
+  const saved = new Map(v.latest.nights.map((n) => [n.night, n]));
+  const usable = new Set(plan.table.levels.filter((x) => x.usable).map((x) => x.level));
+  const nights = plan.nights.map((n) => {
+    const s = saved.get(n.night);
+    if (!n.gray || !s || s.by !== "ai" || !usable.has(s.level)) return n;
+    return { ...n, level: s.level, by: "ai", reason: s.reason };
+  });
+  return { nights, from: "latest" };
+}
+
+function renderLevels(holder, v) {
+  const plan = v.plan;
+  const table = plan.table;
+  const price = (level) => table.levels.find((x) => x.level === level)?.price;
+  const out = [
+    el("h2", { cls: "card-title" }, ["料金のレベル（経営企画）", v.latest?.status === "draft" && !lv.result ? el("span", { cls: "pill warn", text: "案（まだOKしていません）" }) : null, v.latest?.status === "ok" && !lv.result ? el("span", { cls: "pill ok", text: "OKした案" }) : null]),
+    el("p", { cls: "sub", text: "金額はオーナーが決めます。年末年始・お盆・連休・OKした行事の夜はプログラムが決め、それ以外のはっきりしない夜は経営企画（AI）がレベル1〜3から選び、監査役が理由を確かめます。予約サイトに値段を入れるのはオーナーです。" }),
+  ];
+  if (lv.note) out.push(lv.note);
+
+  // レベルの表
+  const take = new Map((plan.take_home ?? []).map((x) => [x.level, x.values]));
+  out.push(
+    el("dl", { cls: "kv price-kv level-kv" }, table.levels.flatMap((x) => {
+      const th = take.get(x.level);
+      const extra = th?.length ? `（2泊したときの1泊の手取り ${th.map((t) => `${t.name} 約${yen(t.value)}円`).join("・")}）` : "";
+      return [
+        el("dt", { text: `レベル${x.level}・${x.name}` }),
+        el("dd", {}, [x.price == null ? "未設定" : `1泊${yen(x.price)}円`, x.usable ? extra : el("span", { cls: "pill warn", text: x.why })]),
+      ];
+    })),
+  );
+  for (const p of table.problems) out.push(el("p", { cls: "notice warn", text: p }));
+  if (!table.set) {
+    out.push(el("div", { cls: "btns" }, [btn("宿の設定で金額を入れる", () => go("settings"), "btn small")]));
+    holder.replaceChildren(...out);
+    return;
+  }
+
+  // 夜ごとのレベル
+  const { nights, from } = levelNights(v);
+  const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  for (const n of nights) counts[n.level] += 1;
+  out.push(
+    el("h3", { cls: "card-title price-sub", text: `${jpDate(plan.from)}〜${jpDate(plan.to)}の夜` }),
+    el("p", { text: [1, 2, 3, 4].map((l) => `レベル${l}：${counts[l]}泊`).join("　") + (plan.full_nights ? `（満室の${plan.full_nights}泊は外しています）` : "") }),
+  );
+  const moved = nights.filter((n) => n.level !== 2);
+  if (moved.length) {
+    out.push(
+      el("ul", { cls: "level-list" }, moved.map((n) =>
+        el("li", {}, [
+          el("strong", { text: `${n.label}　レベル${n.level}（${yen(price(n.level))}円）` }),
+          n.by === "ai" ? el("span", { cls: "pill ok", text: "経営企画が選んだ" }) : null,
+          el("span", { cls: "sub", text: `　${n.reason}` }),
+        ]),
+      )),
+    );
+  }
+  const plain = nights.filter((n) => n.level === 2);
+  if (plain.length) {
+    out.push(el("details", {}, [el("summary", { text: `レベル2の夜（${plain.length}泊）` }), el("p", { cls: "sub", text: plain.map((n) => n.label).join("・") })]));
+  }
+
+  // 相談した直後の結果
+  const r = lv.result;
+  if (r) {
+    if (r.unavailable) out.push(el("p", { cls: "notice info", text: LEVEL_UNAVAILABLE[r.unavailable] ?? LEVEL_UNAVAILABLE.api_error }));
+    else {
+      const n = r.nights.filter((x) => x.by === "ai").length;
+      out.push(el("p", { cls: "notice info", text: `経営企画が${n}泊のレベルを変えました。${r.summary ?? ""}` }));
+      if (r.audit?.gave_up && r.dropped?.length) {
+        out.push(el("p", { cls: "notice warn", text: `監査役が理由に納得しなかった ${r.dropped.map((d) => jpDate(d)).join("・")} は、レベル2のままにしています` }));
+      } else if (r.audit) {
+        out.push(el("p", { cls: "sub", text: "監査役が、理由が事実どおりか・誤解を招く書き方がないかを確かめました" }));
+      }
+    }
+  }
+
+  // OK ボタン（下書きの案があるとき）
+  if (v.latest?.status === "draft") {
+    out.push(
+      el("div", { cls: "btns" }, [
+        btn("この案でOK（予約サイトには自分で入れます）", (e) => okLevelPlan(e.currentTarget, v.latest.id), "btn primary"),
+      ]),
+    );
+  } else if (v.latest?.status === "ok" && from !== "result") {
+    out.push(el("p", { cls: "sub", text: "この案はOKしました。予約サイトの値段は、オーナーが入れてください。" }));
+  }
+
+  // 経営企画に相談する
+  const note = el("textarea", { cls: "text-in note-in", attrs: { "aria-label": "周りの宿の値段（なくてもよい）", maxlength: "2000", placeholder: "周りの宿の値段（なくてもよい）。例：近所のA宿 11月21日 15,000円" } });
+  out.push(
+    el("h3", { cls: "card-title price-sub", text: "経営企画に相談する" }),
+    el("p", { cls: "sub", text: "はっきりしない夜を、空き具合・曜日・何日先かから見直します。周りの宿の値段は、ここに貼ったときだけ使います（貼られていない値段を理由にはしません）。" }),
+    note,
+  );
+  const ask = btn("経営企画に相談する", (e) => askLevels(e.currentTarget, note.value), "btn primary");
+  if (!v.ai_ready) {
+    ask.disabled = true;
+    out.push(el("p", { cls: "notice info", text: "AIの鍵がないので、今はプログラムの案だけです" }));
+  }
+  out.push(el("div", { cls: "btns" }, [ask]), el("div", { attrs: { id: "level-msg" } }));
+
+  // 宮崎市の行事
+  out.push(...levelEvents(v));
+  holder.replaceChildren(...out);
+  if (lv.busy) for (const b of holder.querySelectorAll("button")) b.disabled = true;
+}
+
+function levelEvents(v) {
+  const out = [
+    el("h3", { cls: "card-title price-sub", text: "宮崎市の行事（上げどきの候補）" }),
+    el("p", { cls: "sub", text: "経営企画が、宮崎市の公式の観光サイトと市役所のサイトだけを調べます。出典のページを確かめてから「上げどきにする」を押してください。OKした行事の前の晩と当日の晩は、レベル3になります。" }),
+  ];
+  const live = v.candidates.filter((c) => c.status !== "dismissed");
+  const gone = v.candidates.filter((c) => c.status === "dismissed");
+  const item = (c) => {
+    const when = c.start_day === c.end_day ? jpDate(c.start_day) : `${jpDate(c.start_day)}〜${jpDate(c.end_day)}`;
+    const meta = [when, c.place, CROWD_JA[c.crowd]].filter(Boolean).join("・");
+    const buttons =
+      c.status === "candidate"
+        ? [btn("上げどきにする", (e) => decideEvent(e.currentTarget, c.id, "ok"), "btn small primary"), btn("見送る", (e) => decideEvent(e.currentTarget, c.id, "dismiss"), "btn small")]
+        : [btn("戻す", (e) => decideEvent(e.currentTarget, c.id, "undo"), "btn small")];
+    return el("li", { cls: "level-event" }, [
+      el("strong", { text: c.name }),
+      c.found_by === "sample" ? el("span", { cls: "pill mask", text: "見本（架空）" }) : null,
+      c.status === "ok" ? el("span", { cls: "pill ok", text: "上げどき" }) : null,
+      el("p", { cls: "sub", text: meta }),
+      c.source_url ? el("p", { cls: "sub" }, ["出典：", el("a", { text: c.source_title || c.source_url, attrs: { href: c.source_url, target: "_blank", rel: "noopener" } })]) : null,
+      c.note ? el("p", { cls: "sub", text: c.note }) : null,
+      el("div", { cls: "btns" }, buttons),
+    ]);
+  };
+  if (live.length) out.push(el("ul", { cls: "level-list" }, live.map(item)));
+  else out.push(el("p", { cls: "state", text: "まだ候補はありません" }));
+  if (gone.length) out.push(el("details", {}, [el("summary", { text: `見送った行事（${gone.length}件）` }), el("ul", { cls: "level-list" }, gone.map(item))]));
+  const buttons = [];
+  if (v.ai_ready) buttons.push(btn("宮崎市の行事を探す", (e) => searchLevelEvents(e.currentTarget), "btn"));
+  if (v.demo) buttons.push(btn("見本の行事を入れる（デモ）", (e) => sampleLevelEvents(e.currentTarget), "btn small"));
+  if (buttons.length) out.push(el("div", { cls: "btns" }, buttons));
+  if (!v.ai_ready) out.push(el("p", { cls: "sub", text: "AIの鍵がないので、行事を探すことはできません" }));
+  out.push(el("div", { attrs: { id: "event-msg" } }));
+  return out;
+}
+
+function lockLevels(on) {
+  lv.busy = on;
+  for (const b of $("level-card")?.querySelectorAll("button") ?? []) b.disabled = on;
+}
+
+async function askLevels(b, marketNote) {
+  lockLevels(true);
+  const msg = $("level-msg");
+  teamWorking((note) => msg?.replaceChildren(loading(`${note}（10〜40秒ほど）`)), LEVEL_STEPS);
+  try {
+    const r = await api("/api/price-levels/suggest", { method: "POST", body: { market_note: marketNote } });
+    teamDone(r.result.source === "ai" ? "料金のレベルの案ができました" : "プログラムの案を出しました");
+    lv.result = r.result;
+    lv.note = null;
+    lv.busy = false;
+    renderLevels($("level-card"), r);
+    toast("料金のレベルの案を出しました");
+  } catch (err) {
+    teamDone("料金のレベルを相談できませんでした");
+    lockLevels(false);
+    msg?.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
+}
+
+async function okLevelPlan(b, id) {
+  lockLevels(true);
+  try {
+    const v = await api(`/api/price-levels/${id}/ok`, { method: "POST", body: {} });
+    lv.result = null;
+    lv.note = el("p", { cls: "notice info", text: "この案でOKしました。予約サイトの値段は、オーナーが入れてください（番頭は予約サイトを変えません）" });
+    lv.busy = false;
+    renderLevels($("level-card"), v);
+  } catch (err) {
+    lockLevels(false);
+    $("level-msg")?.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
+}
+
+async function decideEvent(b, id, what) {
+  lockLevels(true);
+  try {
+    const v = await api(`/api/price-events/${id}/${what}`, { method: "POST", body: {} });
+    // 行事を OK／戻すと、はっきりした夜が変わる。古い相談結果は消して、最後の案を重ね直す
+    lv.result = null;
+    lv.note = what === "ok" ? el("p", { cls: "notice info", text: "上げどきにしました。この行事の夜はレベル3になります" }) : null;
+    lv.busy = false;
+    renderLevels($("level-card"), v);
+  } catch (err) {
+    lockLevels(false);
+    $("event-msg")?.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
+}
+
+async function searchLevelEvents(b) {
+  lockLevels(true);
+  const msg = $("event-msg");
+  teamWorking((note) => msg?.replaceChildren(loading(`${note}（20〜60秒ほど）`)), EVENT_STEPS);
+  try {
+    const r = await api("/api/price-events/search", { method: "POST", body: {} });
+    const f = r.found;
+    teamDone("行事を探し終えました");
+    let text;
+    if (f.unavailable) text = f.unavailable === "no_key" ? "AIの鍵がないので、行事を探せませんでした" : f.unavailable === "daily_limit" ? "今日のAIの使用回数の上限に達したので、行事を探せませんでした" : "AIがうまく答えられなかったので、行事を探せませんでした";
+    else if (!f.pages) text = "公式のサイトで、行事のページが見つかりませんでした";
+    else text = `公式のサイトを${f.pages}ページ見て、新しく${f.added}件を候補にしました${f.dropped.length ? `（日付や出典を確かめられなかった${f.dropped.length}件は外しました）` : ""}`;
+    lv.note = el("p", { cls: `notice ${f.added ? "info" : "warn"}`, text });
+    lv.busy = false;
+    renderLevels($("level-card"), r);
+  } catch (err) {
+    teamDone("行事を探せませんでした");
+    lockLevels(false);
+    msg?.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
+}
+
+async function sampleLevelEvents(b) {
+  lockLevels(true);
+  try {
+    const r = await api("/api/price-events/samples", { method: "POST", body: {} });
+    lv.note = el("p", { cls: "notice info", text: r.sample.added ? `見本の行事（架空）を${jpDate(r.sample.day)}に入れました` : "見本の行事は、もう入っています" });
+    lv.busy = false;
+    renderLevels($("level-card"), r);
+  } catch (err) {
+    lockLevels(false);
+    $("event-msg")?.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
+  b.blur();
 }
 
 function kpiPriceCard(d, pr) {
@@ -464,7 +745,7 @@ function kpiPriceCard(d, pr) {
   ];
   if (pr.guide) set.push(`これまでの1泊の平均 約${yen(pr.guide.price)}円`);
   body.push(
-    el("p", { cls: "sub", text: `宿の設定：${set.join("・")}。上げどきの夜や、1泊だけ空いた夜は、決裁箱でお知らせします。値段を決めて予約サイトに入れるのはオーナーです（番頭は予約も帳簿も変えません。AIは使わず、プログラムが計算しています）` }),
+    el("p", { cls: "sub", text: `宿の設定：${set.join("・")}。上げどきの夜や、1泊だけ空いた夜は、決裁箱でお知らせします。値段を決めて予約サイトに入れるのはオーナーです（番頭は予約も帳簿も変えません。手取りとペースはプログラムが計算しています）` }),
     el("div", { cls: "btns" }, [btn("決裁箱を見る", () => go("decisions"), "btn small")]),
   );
   return el("article", { cls: "card" }, [
@@ -1576,6 +1857,10 @@ const INN_FORM = [
   ["cleaning_checkin_time", "チェックインの時刻", "time", {}],
   ["cleaning_fee", "清掃1回の費用（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
   ["min_price", "1泊のいちばん安い値段（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
+  ["price_l1", "料金のレベル1（円・空きやすい日）", "text", { inputmode: "numeric", maxlength: "9" }],
+  ["price_l2", "料金のレベル2（円・ふだんの日）", "text", { inputmode: "numeric", maxlength: "9" }],
+  ["price_l3", "料金のレベル3（円・混む日）", "text", { inputmode: "numeric", maxlength: "9" }],
+  ["price_l4", "料金のレベル4（円・年末年始・お盆）", "text", { inputmode: "numeric", maxlength: "9" }],
 ];
 
 // 宿泊税の申告書（宮崎市 様式第10号）に書くこと。どれも任意。空なら申告書のその欄は空けて出す

@@ -1,5 +1,7 @@
 -- 自動生成（npm run seed:build）。手で直さず seed/demo-reservations.js を直す。
 -- 中身はすべて架空データ。
+DELETE FROM price_level_plans;
+DELETE FROM price_event_candidates;
 DELETE FROM cleaning_assignments;
 DELETE FROM cleaners;
 DELETE FROM discrepancies;
@@ -16,7 +18,7 @@ DELETE FROM reservations;
 DELETE FROM rooms;
 DELETE FROM inn_profile;
 
-INSERT INTO inn_profile (id, name, type, rooms, address, lat, lng, checkin_method_json, house_rules_json, allowed_promises_json, taxi_info_json, owner_contact_json, fixed_arrival_json, infants_taxable, fiscal_year_start, cosleep_free_exempt, cancel_fee_treatment, tax_start_date, tax_rate, cleaning_checkout_time, cleaning_checkin_time, cleaning_fee, min_price, collector_address, collector_name, corporate_no, inn_phone, facility_no, contact_name, contact_phone, notification_no) VALUES (1, 'しおさいの家（架空）', '家主不在型', 2, '宮崎県宮崎市青島（架空の住所）', 31.803, 131.469, '{"type":"keybox","code_ref":"SECRET:KEYBOX_CODE"}', '["22時以降は静かに","室内禁煙","ごみは分別して玄関の箱へ"]', '["タオルの追加","チェックアウト後の荷物預かり（12時まで）"]', '{"name":"架空タクシー","note":"電話番号は画面に出さない"}', '{"channel":"airbnb_message"}', NULL, 1, '04-01', 0, 'penalty', '2026-07-01', 200, '10:00', '15:00', 5000, 9000, '宮崎県宮崎市青島（架空の住所）', '青島 しおさい（架空）', NULL, '0985-00-0000', 'DEMO-001', '青島 しおさい（架空）', '090-0000-0000', 'M000000000');
+INSERT INTO inn_profile (id, name, type, rooms, address, lat, lng, checkin_method_json, house_rules_json, allowed_promises_json, taxi_info_json, owner_contact_json, fixed_arrival_json, infants_taxable, fiscal_year_start, cosleep_free_exempt, cancel_fee_treatment, tax_start_date, tax_rate, cleaning_checkout_time, cleaning_checkin_time, cleaning_fee, min_price, price_l1, price_l2, price_l3, price_l4, collector_address, collector_name, corporate_no, inn_phone, facility_no, contact_name, contact_phone, notification_no) VALUES (1, 'しおさいの家（架空）', '家主不在型', 2, '宮崎県宮崎市青島（架空の住所）', 31.803, 131.469, '{"type":"keybox","code_ref":"SECRET:KEYBOX_CODE"}', '["22時以降は静かに","室内禁煙","ごみは分別して玄関の箱へ"]', '["タオルの追加","チェックアウト後の荷物預かり（12時まで）"]', '{"name":"架空タクシー","note":"電話番号は画面に出さない"}', '{"channel":"airbnb_message"}', NULL, 1, '04-01', 0, 'penalty', '2026-07-01', 200, '10:00', '15:00', 5000, 9000, 9000, 11000, 14000, 18000, '宮崎県宮崎市青島（架空の住所）', '青島 しおさい（架空）', NULL, '0985-00-0000', 'DEMO-001', '青島 しおさい（架空）', '090-0000-0000', 'M000000000');
 
 INSERT INTO rooms (code, name, sort_order) VALUES ('A', '部屋A', 1);
 INSERT INTO rooms (code, name, sort_order) VALUES ('B', '部屋B', 2);

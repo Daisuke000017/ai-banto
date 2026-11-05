@@ -938,3 +938,11 @@ body.drill::after {
   .tr-table th, .tr-table .tr-unit, .tr-shade { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tr-table { break-inside: avoid; }
 }
+
+/* 料金のレベル（経営企画） */
+.level-kv dd .pill { margin-left: var(--s2); }
+.level-list { list-style: none; padding: 0; margin: var(--s3) 0 0; display: grid; gap: var(--s2); }
+.level-list li { padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.level-list li .pill { margin-left: var(--s2); }
+.level-list .sub { margin-top: var(--s1); }
+.level-list a { overflow-wrap: anywhere; }

@@ -1,4 +1,5 @@
-// 値付けの助言（経営企画・2026-11-05 社長決定）。AIは使わない。数字も文も、プログラムが決まった形で作る。
+// 値付けの助言（経営企画・2026-11-05 社長決定）。この表と計算はプログラム（AIは使わない）。
+// 料金のレベルは price-levels.js（プログラム）と price-level-ai.js（グレーな夜だけAI）。行事の候補を探すのは price-events-ai.js（AI）
 //
 // 決めごと
 // - 数字はプログラムが数える。値段を決めて予約サイトに入れるのはオーナー。番頭は帳簿も予約も変えない。
@@ -74,10 +75,11 @@ function blockName(b) {
 }
 
 /**
- * 今日から7〜90日先の「高く売れそうな夜」。連休（最後の日を除く夜）と、表にある行事の夜。
+ * 今日から7〜90日先の「高く売れそうな夜」。連休（最後の日を除く夜）と、表にある行事の夜と、
+ * オーナーが OK した行事の候補（extra）の夜（前の晩と当日の晩。何日も続く行事は前の晩〜最後の日の前の晩）。
  * @returns {{id, name, title, nights: string[], sources: object[]}[]}
  */
-export function eventNights(today) {
+export function eventNights(today, extra = []) {
   const from = addDays(today, EVENT_FROM_DAYS);
   const to = addDays(today, EVENT_TO_DAYS);
   const inRange = (n) => n >= from && n <= to;
@@ -102,7 +104,30 @@ export function eventNights(today) {
       sources: [e.source],
     });
   }
+  for (const e of extra) {
+    const nights = candidateNights(e).filter(inRange);
+    if (!nights.length) continue;
+    const range = e.start_day === e.end_day ? jpDate(e.start_day) : `${jpDate(e.start_day)}〜${jpDate(e.end_day)}`;
+    const source = e.found_by === "sample"
+      ? { name: "デモの見本（実在しない行事）", url: "" }
+      : { name: e.source_title || e.name, url: e.source_url || "" };
+    out.push({
+      id: `cand-${e.id}`,
+      name: `${e.name}（${range}${e.place ? `・${e.place}` : ""}）`,
+      title: `${e.name}の夜（${nights.map(jpDate).join("・")}）`,
+      nights,
+      sources: [source],
+    });
+  }
   return out.sort((a, b) => a.nights[0].localeCompare(b.nights[0]));
+}
+
+/** 行事の候補の、泊まる夜。1日だけなら前の晩と当日の晩、何日も続くなら前の晩〜最後の日の前の晩 */
+export function candidateNights(e) {
+  const out = [];
+  const last = e.start_day === e.end_day ? e.start_day : addDays(e.end_day, -1);
+  for (let d = addDays(e.start_day, -1); d <= last; d = addDays(d, 1)) out.push(d);
+  return out;
 }
 
 /** ある夜の部屋のふさがり方。部屋が決まっていない予約は「どこか1部屋」として数える */
@@ -278,7 +303,7 @@ const OWNER_FACT = fact("決めるのは", "値段と条件を決めて予約サ
  * @param {object[]} p.lines 予約サイトの明細の行
  * @param {object} p.counter dayCounter の結果
  */
-export function pricingItems({ today, inn, reservations, lines = [], counter }) {
+export function pricingItems({ today, inn, reservations, lines = [], counter, events = [] }) {
   const rooms = Array.isArray(inn?.room_list) && inn.room_list.length ? roomCodes(inn.room_list) : roomCodes(Number(inn?.rooms ?? 1));
   const label = (code) => roomLabel(inn?.room_list, code);
   const cleaning = inn?.cleaning_fee == null ? null : Number(inn.cleaning_fee);
@@ -307,7 +332,8 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
   };
 
   // ① 上げどき：行事・連休の夜で、まだ空いている
-  for (const ev of eventNights(today)) {
+  const levelOf = (n) => (inn?.[`price_l${n}`] == null ? null : Number(inn[`price_l${n}`]));
+  for (const ev of eventNights(today, events)) {
     const occ = ev.nights.map((n) => occupancy(reservations, n, rooms)).filter((o) => o.free > 0);
     if (!occ.length) continue;
     const roomsText = (o) => (o.free_rooms ? `${o.free}部屋（${o.free_rooms.map(label).join("・")}）` : `${o.free}部屋`);
@@ -316,6 +342,13 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       fact("空いている夜", occ.map((o) => `${jpDate(o.night)}：${roomsText(o)}`).join("／")),
       ...priceFacts(Math.min(occ.length, 3)),
     ];
+    // 料金のレベル（金額はオーナーが宿の設定で決めたもの）。年末年始・お盆はレベル4、それ以外はレベル3
+    const peak = occ.some((o) => { const md = o.night.slice(5); return md >= "12-29" || md <= "01-03" || (md >= "08-13" && md <= "08-16"); });
+    const lv = peak ? 4 : 3;
+    if (levelOf(lv) != null) {
+      const low = minPrice != null && levelOf(lv) < minPrice;
+      facts.push(fact("料金のレベル", low ? `レベル${lv}（${yen(levelOf(lv))}）は最低価格より安いので、宿の設定を見直してください` : `この夜はレベル${lv}（1泊${yen(levelOf(lv))}）にしては？`));
+    }
     if (pace) facts.push(fact("180日の方針", `${pace.policy_label}：${pace.reach_text}`));
     if (occ.some((o) => o.taken > 0)) {
       facts.push(fact("180日の数え方", "もう1部屋に予約がある夜は、残りの部屋が埋まっても180日の日数は増えません"));
@@ -337,7 +370,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
   }
 
   // ② 1泊だけ空いた夜：連泊の条件をゆるめる・少し下げると埋まりやすい
-  const eventSet = new Set(eventNights(today).flatMap((e) => e.nights));
+  const eventSet = new Set(eventNights(today, events).flatMap((e) => e.nights));
   for (const g of findGaps(reservations, today, rooms)) {
     if (eventSet.has(g.night)) continue; // 上げどきの夜は、下げる話をしない
     const facts = [

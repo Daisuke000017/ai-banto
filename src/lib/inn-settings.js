@@ -1,4 +1,4 @@
-// 宿の設定（名前・住所・届出番号・清掃の時間・清掃費・最低価格・宿泊税の申告書に書くこと）の入力を確かめる。AIは使わない
+// 宿の設定（名前・住所・届出番号・清掃の時間・清掃費・最低価格・料金のレベル・宿泊税の申告書に書くこと）の入力を確かめる。AIは使わない
 // 送られてきた項目だけを確かめて、書きこむ値を返す。だめなら最初のまちがいの文を返す
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CTRL_RE = /[\u0000-\u001f\u007f]/g;
@@ -59,6 +59,11 @@ export function checkInnPatch(body, current = {}) {
     ["cleaning_checkin_time", (v) => time(v, "チェックインの時刻")],
     ["cleaning_fee", (v) => yen(v, "清掃費")],
     ["min_price", (v) => yen(v, "最低価格")],
+    // 料金のレベル1〜4（1泊）。金額はオーナーが決める
+    ["price_l1", (v) => yen(v, "レベル1の料金")],
+    ["price_l2", (v) => yen(v, "レベル2の料金")],
+    ["price_l3", (v) => yen(v, "レベル3の料金")],
+    ["price_l4", (v) => yen(v, "レベル4の料金")],
     // 宿泊税の申告書（宮崎市 様式第10号）に書くこと。どれも任意
     ["collector_address", (v) => text(v, "特別徴収義務者の住所", 100)],
     ["collector_name", (v) => text(v, "特別徴収義務者の氏名（名称）", 60)],
@@ -89,6 +94,14 @@ export function checkInnPatch(body, current = {}) {
   const out = values.cleaning_checkout_time ?? current.cleaning_checkout_time;
   const inn = values.cleaning_checkin_time ?? current.cleaning_checkin_time;
   if (out && inn && out >= inn) return { error: "チェックアウトの時刻は、チェックインの時刻より前にしてください" };
+  // レベルは 1 < 2 < 3 < 4 の順に高くする（入っているものどうしで確かめる）
+  const lv = [1, 2, 3, 4].map((n) => {
+    const k = `price_l${n}`;
+    return { n, v: k in values ? values[k] : (current[k] ?? null) };
+  }).filter((x) => x.v != null);
+  for (let i = 1; i < lv.length; i++) {
+    if (lv[i].v <= lv[i - 1].v) return { error: `レベル${lv[i].n}の料金は、レベル${lv[i - 1].n}より高くしてください` };
+  }
   if (!Object.keys(values).length) return { error: "変える項目がありません" };
   return { values };
 }
