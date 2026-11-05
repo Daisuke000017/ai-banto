@@ -1376,11 +1376,8 @@ function draftCard(d) {
         // 誰が書き、誰が確かめたかを上の帯と同じ形の札で見せる
         isAi
           ? el("p", { cls: "credits", attrs: { "aria-label": "宿泊担当が書き、監査役とプログラムが確かめた下書きです" } }, [
-              el("span", { text: "書いた" }),
-              el("span", { cls: "role-pill", text: "宿泊担当" }),
-              el("span", { text: "確かめた" }),
-              el("span", { cls: "role-pill", text: "監査役" }),
-              el("span", { text: "とプログラム" }),
+              el("span", { cls: "credit" }, [el("span", { text: "書いた" }), el("span", { cls: "role-pill", text: "宿泊担当" })]),
+              el("span", { cls: "credit" }, [el("span", { text: "確かめた" }), el("span", { cls: "role-pill", text: "監査役" }), el("span", { text: "とプログラム" })]),
             ])
           : el("p", { cls: "lead", text: "決まった文の下書きです" }),
       ]),
@@ -1956,10 +1953,8 @@ function mapCard(up, file) {
   const head =
     up.source === "ai"
       ? el("p", { cls: "credits", attrs: { "aria-label": "経理担当が案をつくり、プログラムが確かめた対応表です" } }, [
-          el("span", { text: "案をつくった" }),
-          el("span", { cls: "role-pill", text: "経理担当" }),
-          el("span", { text: "確かめた" }),
-          el("span", { text: "プログラム" }),
+          el("span", { cls: "credit" }, [el("span", { text: "案をつくった" }), el("span", { cls: "role-pill", text: "経理担当" })]),
+          el("span", { cls: "credit" }, [el("span", { text: "確かめた" }), el("span", { text: "プログラム" })]),
         ])
       : el("p", { cls: "lead", text: up.source === "saved" ? "前に OK した対応表と同じ形の明細です" : "見出しの言葉から、プログラムが見当をつけました" });
 
@@ -2215,11 +2210,8 @@ function reasonView(d) {
   if (r.source === "ai") {
     out.push(
       el("p", { cls: "credits", attrs: { "aria-label": "経理担当が考え、プログラムと監査役が確かめた候補です" } }, [
-        el("span", { text: "考えた" }),
-        el("span", { cls: "role-pill", text: "経理担当" }),
-        el("span", { text: "確かめた" }),
-        el("span", { text: "プログラムと" }),
-        el("span", { cls: "role-pill", text: "監査役" }),
+        el("span", { cls: "credit" }, [el("span", { text: "考えた" }), el("span", { cls: "role-pill", text: "経理担当" })]),
+        el("span", { cls: "credit" }, [el("span", { text: "確かめた" }), el("span", { text: "プログラムと" }), el("span", { cls: "role-pill", text: "監査役" })]),
       ]),
     );
   } else {
@@ -2544,22 +2536,81 @@ function decisionCard(d, main = false) {
     ok.dataset.lock = "1";
   }
   const fixLabel = d.kind in OK_LABEL ? `直す（${TITLE[d.link] ?? "画面"}へ）` : `${TITLE[d.link] ?? "画面"}を見る`;
+  // 「書いた人」は下の行（書いた／確かめた）と同じことなので、行が出るときは表に出さない
+  const facts = d.by ? d.facts.filter((f) => f.label !== "書いた人") : d.facts;
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv })]),
-    el("h3", { cls: "card-title dx-title", text: d.title }),
-    el("dl", { cls: "kv" }, d.facts.flatMap((f) => [el("dt", { text: f.label }), el("dd", { text: f.value })])),
+    el("h3", { cls: "card-title dx-title" }, keepTogether(d.title)),
+    dxCredits(d),
+    factList(facts, "kv"),
     d.can_ok ? null : el("p", { cls: "notice warn", text: "番頭が決められないことがあるので、まだOKできません。「直す」から直してください" }),
     el("div", { cls: "btns" }, [ok, d.link in SHOW ? btn(fixLabel, () => openFrom(d), "btn") : null]),
     msg,
   ]);
 }
 
+// 決裁箱のカードの「読んだ／書いた／確かめた」の行（訓練の下書きカードと同じ形）。
+// サーバーが入れた by を使う。by の無い古いカードは、種類から決める
+function byOf(d) {
+  if (Array.isArray(d.by) && d.by.length) return d.by;
+  if (d.kind === "arrival_draft") {
+    const w = d.facts.find((f) => f.label === "書いた人")?.value ?? "";
+    return w.includes("AI") ? [["書いた", "shukuhaku"], ["確かめた", "kansa", "program"]] : [["書いた", "決まった文（AIを使わず）"]];
+  }
+  if (d.kind === "booking_email") return [["確かめた", "program"]];
+  return [[d.review ? "計算した" : "数えた", "program"]];
+}
+
+function dxCredits(d) {
+  const by = byOf(d);
+  const usesAi = by.some(([, ...who]) => who.some((w) => w in TEAM_NAME));
+  const parts = [];
+  const said = [];
+  for (const [verb, ...who] of by) {
+    const names = who.filter((w) => w !== "program");
+    const prog = who.includes("program");
+    // 「数えた プログラム」のひとかたまりは途中で改行しない
+    const one = [el("span", { text: verb })];
+    for (const w of names) one.push(w in TEAM_NAME ? el("span", { cls: "role-pill", text: TEAM_NAME[w] }) : el("span", { text: w }));
+    // AIを使っていないカードは「プログラム（AIなし）」と言い切る
+    if (prog) one.push(el("span", { text: names.length ? "とプログラム" : usesAi ? "プログラム" : "プログラム（AIなし）" }));
+    parts.push(el("span", { cls: "credit" }, one));
+    said.push(`${verb} ${[...names.map((w) => TEAM_NAME[w] ?? w), ...(prog ? ["プログラム"] : [])].join("と")}`);
+  }
+  parts.push(el("span", { cls: "credit" }, [el("span", { text: "決めるのは" }), el("span", { cls: "role-pill", text: "あなた" })]));
+  return el("p", { cls: "credits", attrs: { "aria-label": `${said.join("、")}。決めるのはあなたです` } }, parts);
+}
+
+// 日付・金額・「○部屋」は途中で改行しない（「12月／12日」「約／14,500円」を防ぐ）
+const KEEP = /\d{1,2}月\d{1,2}日(?:（[^）]{1,2}）)?(?:：\d+部屋(?:（[A-Z]）)?)?|約\s?[\d,]+円|[\d,]+円/g;
+function keepTogether(text) {
+  const s = String(text ?? "");
+  const out = [];
+  let i = 0;
+  for (const m of s.matchAll(KEEP)) {
+    if (m.index > i) out.push(s.slice(i, m.index));
+    out.push(el("span", { cls: "nw", text: m[0] }));
+    i = m.index + m[0].length;
+  }
+  if (i < s.length) out.push(s.slice(i));
+  return out;
+}
+
+// 事実の表。プログラムが数えた数字の行には、小さな印を付ける
+function factList(facts, cls) {
+  return el("dl", { cls }, facts.flatMap((f) => [
+    el("dt", {}, keepTogether(f.label)),
+    el("dd", {}, [...keepTogether(f.value), f.calc ? el("span", { cls: "calc-mark", text: "プログラムが数えた" }) : null]),
+  ]));
+}
+
 // 値付けの知らせ：OK の代わりに「見直した／このまま」。押したことを記録するだけで、予約も帳簿も変えない
 function priceCard(d, lv, cls, msg, main = false) {
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv }), el("span", { cls: "pill", text: "値付け" })]),
-    el("h3", { cls: "card-title dx-title", text: d.title }),
-    el("dl", { cls: "kv dx-price" }, d.facts.flatMap((f) => [el("dt", { text: f.label }), el("dd", { text: f.value })])),
+    el("h3", { cls: "card-title dx-title" }, keepTogether(d.title)),
+    dxCredits(d),
+    factList(d.facts, "kv dx-price"),
     el("p", { cls: "sub", text: "予約サイトで値段や条件を見直したら「見直した」、そのままにするなら「このまま」を押してください。押したことを記録して、あとで今月の数字で比べます" }),
     el("div", { cls: "btns" }, [
       btn("見直した", () => decideReview(d, "reviewed", msg), main ? "btn primary" : "btn"),

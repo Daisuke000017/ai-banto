@@ -181,7 +181,13 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
   border-radius: 0 var(--r) var(--r) 0;
 }
 .credits { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); margin-top: var(--s2); font-size: 15px; color: var(--ink-sub); }
-.role-pill { font-weight: 700; color: var(--ink); border-top: 3px solid var(--glow); padding: 0 var(--s1); }
+/* 担当の名札：小さな角丸の札。上の線だと見出しの下線に見えたので、明るい黄色の地と細い枠にする */
+.role-pill { font-weight: 700; color: var(--ink); background: var(--glow-bg); border: 1px solid var(--glow); border-radius: 999px; padding: 0 var(--s2); line-height: 1.6; }
+.dx .credits { margin-top: var(--s2); }
+.credit { display: inline-flex; align-items: center; gap: var(--s1); white-space: nowrap; }
+/* 決裁箱の表：プログラムが数えた数字の行の印（押せない、灰色の小さな字） */
+.calc-mark { display: block; font-size: 15px; color: var(--ink-sub); }
+.calc-mark::before { content: "＝ "; }
 
 main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 .panel { display: grid; gap: var(--s3); }

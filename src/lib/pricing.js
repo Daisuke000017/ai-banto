@@ -32,7 +32,7 @@ const WEEK_JA = ["日", "月", "火", "水", "木", "金", "土"];
 const isConfirmed = (r) => r.status === "confirmed";
 const jpDate = (s) => `${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日`;
 const yen = (n) => `${Number(n).toLocaleString("en-US")}円`;
-const fact = (label, value) => ({ label, value: String(value) });
+const fact = (label, value, calc = false) => (calc ? { label, value: String(value), calc: true } : { label, value: String(value) });
 const round100 = (n) => Math.round(n / 100) * 100;
 const nightsOfRes = (r) => daysBetween(r.checkin_date, r.checkout_date);
 const covers = (r, night) => r.checkin_date <= night && night < r.checkout_date;
@@ -293,11 +293,11 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       return out;
     }
     if (guide) {
-      out.push(fact("手取りの目安", `1泊${yen(guide.price)}で${nights}泊なら、1泊あたり手元に ${takeHomeText(guide.price, nights, rates, cleaning)}（手数料と清掃費${yen(cleaning)}を引いた額）`));
+      out.push(fact("手取りの目安", `1泊${yen(guide.price)}で${nights}泊なら、1泊あたり手元に ${takeHomeText(guide.price, nights, rates, cleaning)}（手数料と清掃費${yen(cleaning)}を引いた額）`, true));
       out.push(fact("目安の元", `これまでに泊まり終えた予約${guide.reservations}件（${guide.nights}泊）の1泊あたりの平均を、千円単位にした額です`));
     }
     if (minPrice != null) {
-      out.push(fact("最低価格なら", `1泊${yen(minPrice)}で${nights}泊なら、1泊あたり手元に ${takeHomeText(minPrice, nights, rates, cleaning)}`));
+      out.push(fact("最低価格なら", `1泊${yen(minPrice)}で${nights}泊なら、1泊あたり手元に ${takeHomeText(minPrice, nights, rates, cleaning)}`, true));
     }
     return out;
   };
@@ -328,6 +328,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       link: "kpi",
       can_ok: true,
       review: { room: null, nights: occ.map((o) => o.night) },
+      by: [["計算した", "program"]],
     });
   }
 
@@ -357,6 +358,7 @@ export function pricingItems({ today, inn, reservations, lines = [], counter }) 
       link: "kpi",
       can_ok: true,
       review: { room: g.room, nights: [g.night] },
+      by: [["計算した", "program"]],
     });
   }
   return items;

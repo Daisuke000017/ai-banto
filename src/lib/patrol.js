@@ -20,7 +20,10 @@ const LANG_JA = { ja: "日本語", en: "英語", ko: "韓国語", "zh-TW": "中�
 
 const jpDate = (s) => (s ? `${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日` : "—");
 const yen = (n) => `${Number(n).toLocaleString("en-US")}円`;
-const fact = (label, value) => ({ label, value: String(value) });
+// calc：プログラムが数えた・計算した数字の行（画面で「プログラムが数えた」の印を付ける）
+const fact = (label, value, calc = false) => (calc ? { label, value: String(value), calc: true } : { label, value: String(value) });
+// by：だれが書き・だれが確かめたか（画面の「書いた／確かめた」の行）。"program" はプログラム、ほかは担当の鍵か、そのまま出す言葉
+const BY_PROGRAM = [["数えた", "program"]];
 
 /** 予約メールの人数（大人・子ども・乳幼児） */
 function peopleText(f) {
@@ -76,6 +79,7 @@ export function buildPatrolItems(s) {
       target_id: String(e.id),
       link: "mail",
       can_ok: !e.blocked,
+      by: e.read_by === "ai" ? [["読んだ", "banto"], ["確かめた", "program"]] : [["読んだ", "まだ（AIが使えませんでした）"], ["確かめた", "program"]],
     });
   }
 
@@ -99,6 +103,7 @@ export function buildPatrolItems(s) {
       target_id: String(d.id),
       link: "guest",
       can_ok: !d.needs_owner_check,
+      by: d.source === "ai" ? [["書いた", "shukuhaku"], ["確かめた", "kansa", "program"]] : [["書いた", "決まった文（AIを使わず）"]],
     });
   }
 
@@ -114,12 +119,13 @@ export function buildPatrolItems(s) {
       title: `${DAY_JA[i]}（${jpDate(date)}）は清掃が${list.length}件あります`,
       facts: [
         fact("部屋", list.map((c) => c.room ?? "部屋不明").join("・")),
-        fact("入れ替え", turnover ? `${turnover}件（同じ日に次の方が入ります）` : "なし"),
+        fact("入れ替え", turnover ? `${turnover}件（同じ日に次の方が入ります）` : "なし", true),
         ...(s.cleaning?.window ? [fact("清掃できる時間", `${s.cleaning.window.checkout}〜${s.cleaning.window.checkin}`)] : []),
       ],
       target_id: null,
       link: "cleaning",
       can_ok: true,
+      by: BY_PROGRAM,
     });
   }
 
@@ -132,12 +138,13 @@ export function buildPatrolItems(s) {
       title: c.level === "over" ? "年間の上限（180日）を超える予約が入っています" : `年間の上限まで、あと${c.remaining_days}日です`,
       facts: [
         fact("今年度", `${c.fiscal_year}年度`),
-        fact("泊まった日・予約済みの日", `${c.total_days}日／上限${c.limit}日`),
-        fact("のこり", `${c.remaining_days}日`),
+        fact("泊まった日・予約済みの日", `${c.total_days}日／上限${c.limit}日`, true),
+        fact("のこり", `${c.remaining_days}日`, true),
       ],
       target_id: null,
       link: "minpaku",
       can_ok: true,
+      by: BY_PROGRAM,
     });
   }
 
@@ -153,14 +160,15 @@ export function buildPatrolItems(s) {
       title: `民泊の定期報告（${m1}・${m2}月分）の締切まで、あと${due.days_left}日です`,
       facts: [
         fact("締切", jpDate(due.due_date)),
-        fact("宿泊日数", `${due.stay_days}日`),
-        fact("宿泊者数", `${due.guests}人`),
-        fact("延べ宿泊者数", `${due.guest_nights}人`),
+        fact("宿泊日数", `${due.stay_days}日`, true),
+        fact("宿泊者数", `${due.guests}人`, true),
+        fact("延べ宿泊者数", `${due.guest_nights}人`, true),
         fact("対象", `${y}年${m1}月・${m2 < m1 ? `${y + 1}年` : ""}${m2}月`),
       ],
       target_id: due.period,
       link: "minpaku",
       can_ok: true,
+      by: BY_PROGRAM,
     });
   }
 
@@ -171,10 +179,11 @@ export function buildPatrolItems(s) {
       kind: "discrepancy",
       level: "warn",
       title: `お金の照合で、まだ決めていない「ずれ」が${n}件あります`,
-      facts: [fact("件数", `${n}件`), fact("どこで決めるか", "お金の照合の画面")],
+      facts: [fact("件数", `${n}件`, true), fact("どこで決めるか", "お金の照合の画面")],
       target_id: null,
       link: "money",
       can_ok: true,
+      by: BY_PROGRAM,
     });
   }
 
@@ -194,7 +203,7 @@ const PRICE_RES_SQL = `SELECT id, ota, room, checkin_date, checkout_date, status
 
 /** 決裁箱に残す中身。値付けの知らせは、どの夜の話か（review）も残す */
 function bodyOf(it) {
-  return { facts: it.facts, can_ok: it.can_ok, ...(it.review ? { review: it.review } : {}) };
+  return { facts: it.facts, can_ok: it.can_ok, ...(it.by ? { by: it.by } : {}), ...(it.review ? { review: it.review } : {}) };
 }
 
 /** 何日か先にチェックインで、到着前案内がまだ1つもない予約（名前は読まない） */
@@ -346,6 +355,7 @@ function decisionView(row) {
     facts: Array.isArray(body.facts) ? body.facts : [],
     can_ok: body.can_ok !== false,
     review: body.review ?? null, // 値付けの知らせだけ：「見直した／このまま」で決める
+    by: Array.isArray(body.by) ? body.by : null, // だれが書き・確かめたか（古い記録には無い）
     link: row.link,
     status: row.status,
     created_at: row.created_at,

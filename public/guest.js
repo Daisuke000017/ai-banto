@@ -423,6 +423,7 @@ function openPanel(which) {
   } else if (which === "bus") {
     openBus();
   } else {
+    fillDrill($("sos-drill"), drillNow()); // 訓練中は避難先を一番上に
     $("sos-119").textContent = t.s119;
     $("sos-110").textContent = t.s110;
     $("sos-note").textContent = t.sosNote;
@@ -447,6 +448,9 @@ const BT = {
     next: "次のバス", nextLast: "次が今日の最終バスです", after: "そのあと", last: "今日の最終バス",
     poleMap: "この方面の乗り場を地図で開く",
     none: "今日のバスは、もうありません。",
+    missed: (n) => `歩いて${n}分なので間に合いません。`,
+    missedNext: (t) => `次は ${t}`,
+    noneReach: "このあと、間に合うバスはありません。",
     gone: "出ました",
     inMin: (n) => (n <= 0 ? "まもなく" : n >= 60 ? `あと${Math.floor(n / 60)}時間${n % 60}分` : `あと${n}分`),
     arrive: (to, t) => `${to} ${t}着`,
@@ -479,6 +483,9 @@ const BT = {
     next: "Next bus", nextLast: "The next bus is the last one today", after: "After that", last: "Last bus today",
     poleMap: "Open this direction's stop on the map",
     none: "No more buses today.",
+    missed: (n) => `It is a ${n} min walk, so you cannot catch it. `,
+    missedNext: (t) => `Next: ${t}`,
+    noneReach: "No more buses you can catch today.",
     gone: "Left",
     inMin: (n) => (n <= 0 ? "Now" : n >= 60 ? `in ${Math.floor(n / 60)} h ${n % 60} min` : `in ${n} min`),
     arrive: (to, t) => `arrives ${to} ${t}`,
@@ -511,6 +518,9 @@ const BT = {
     next: "다음 버스", nextLast: "다음 버스가 오늘 막차입니다", after: "그다음", last: "오늘 막차",
     poleMap: "이 방면 승차 위치를 지도에서 열기",
     none: "오늘 버스는 더 이상 없습니다.",
+    missed: (n) => `걸어서 ${n}분이라 탈 수 없습니다. `,
+    missedNext: (t) => `다음은 ${t}`,
+    noneReach: "이제 탈 수 있는 버스가 없습니다.",
     gone: "출발함",
     inMin: (n) => (n <= 0 ? "곧 출발" : n >= 60 ? `${Math.floor(n / 60)}시간 ${n % 60}분 후` : `${n}분 후`),
     arrive: (to, t) => `${to} ${t} 도착`,
@@ -543,6 +553,9 @@ const BT = {
     next: "下一班", nextLast: "下一班就是今日末班車", after: "之後", last: "今日末班車",
     poleMap: "在地圖上開啟此方向的乘車處",
     none: "今天已無班次。",
+    missed: (n) => `步行要${n}分鐘，趕不上。`,
+    missedNext: (t) => `下一班 ${t}`,
+    noneReach: "今天已無趕得上的班次。",
     gone: "已發車",
     inMin: (n) => (n <= 0 ? "即將發車" : n >= 60 ? `${Math.floor(n / 60)}小時${n % 60}分鐘後` : `${n}分鐘後`),
     arrive: (to, t) => `${t} 抵達${to}`,
@@ -656,6 +669,20 @@ function busRow(cls, label, d, b) {
   return box;
 }
 
+function missedRow(missed, next, walk, b) {
+  const box = el("div", "bus-missed");
+  const ul = el("ul", "bus-after");
+  for (const m of missed) {
+    const li = el("li");
+    li.append(el("span", "bus-time-s", m.time));
+    li.append(el("span", "bus-after-to", ` ${b.arrive(m.to, m.arrive)}`));
+    ul.append(li);
+  }
+  box.append(ul);
+  box.append(el("p", "bus-missed-why", `${b.missed(walk)}${next ? b.missedNext(next.time) : ""}`));
+  return box;
+}
+
 function renderBus(data) {
   const b = BT[state.lang];
   const tt = data.timetable;
@@ -676,6 +703,8 @@ function renderBus(data) {
     card.append(towardEl("h2", "sub-title", d.toward, b));
     // 次のバスが今日の最終と同じ便なら、1つにまとめて「次が最終」と出す
     const nextIsLast = sameTrip(d.next[0], d.last);
+    // いまより後でも、歩いて間に合わない便：小さく出して理由を言葉で
+    if (d.missed?.length) card.append(missedRow(d.missed, d.next[0], data.stop.walk_minutes, b));
     if (d.next.length) {
       card.append(busRow(nextIsLast ? "bus-next bus-final" : "bus-next", nextIsLast ? b.nextLast : b.next, d.next[0], b));
       // 最終バスは下の黄色い枠で出すので、「そのあと」には入れない
@@ -693,7 +722,7 @@ function renderBus(data) {
         card.append(ul);
       }
     } else {
-      card.append(el("p", "bus-none", b.none));
+      card.append(el("p", "bus-none", d.missed?.length ? b.noneReach : b.none));
     }
     if (d.last && !nextIsLast) {
       const last = busRow("bus-last", b.last, d.last, b);
@@ -836,9 +865,16 @@ function renderDrillBand() {
   const sig = d ? JSON.stringify(d) : "";
   if (sig === drill.bandSig) return; // 同じ中身なら作り直さない（読み上げをくり返さない）
   drill.bandSig = sig;
+  document.body.classList.toggle("drill", !!d);
+  fillDrill(box, d);
+  // もしものときを開いているときは、そちらも切り替える
+  if (!$("v-panel").hidden && !$("pn-sos").hidden) fillDrill($("sos-drill"), d);
+}
+
+/** 訓練の中身（ホームの赤い帯と、もしものときの一番上で同じものを出す） */
+function fillDrill(box, d) {
   box.replaceChildren();
   box.hidden = !d;
-  document.body.classList.toggle("drill", !!d);
   if (!d) return;
   box.append(el("p", "drill-band-label", d.label));
   box.append(el("p", "drill-band-note", d.not_official));
@@ -850,7 +886,9 @@ function renderDrillBand() {
   for (const s of d.shelters) {
     const li = el("li");
     li.append(el("p", "drill-shelter-name", s.name));
-    li.append(el("p", null, `${s.kind_label} · ${s.dist_text}`));
+    const kind = el("p", null, `${s.kind_label} · `);
+    kind.append(el("span", "nw", s.dist_text)); // 「約400m（直線）」を途中で折らない
+    li.append(kind);
     const p = el("p");
     p.append(link(d.map_label, s.map_url));
     li.append(p);
@@ -861,7 +899,12 @@ function renderDrillBand() {
   hz.append(link(d.hazard_map.label, d.hazard_map.url));
   box.append(hz);
   const src = el("p", "src");
-  src.append(link(d.source.text, d.source.url));
+  // 「（2026-04-28時点）」は途中で折らない
+  const a = link("", d.source.url);
+  const m = String(d.source.text).match(/^(.*?)([（(][^（(]*\d{4}-\d{2}-\d{2}[^）)]*[）)])$/);
+  if (m) a.append(m[1], el("span", "nw", m[2]));
+  else a.textContent = d.source.text;
+  src.append(a);
   box.append(src);
 }
 
@@ -961,6 +1004,8 @@ const AT = {
     tomorrow: "明日のバスで調べました",
     go: "行き", back: "帰り", last: "最終バス",
     leaveInn: (t) => `宿を${t}に出る`,
+    // 「14:23 のバス」は途中で折らない（間は改行しない空白）
+    missed: (n, t) => `バス停まで歩いて${n}分なので、${t} のバスには間に合いません。`,
     home: (t) => `宿に${t}ごろ着く`,
     lastArr: (t) => `${t}着`,
     taxi: (n) => `タクシー：${n}（呼び方は宿のオーナーへ）`,
@@ -989,6 +1034,7 @@ const AT = {
     tomorrow: "Checked with tomorrow's buses",
     go: "Go", back: "Return", last: "Last bus",
     leaveInn: (t) => `leave your stay at ${t}`,
+    missed: (n, t) => `The bus stop is a ${n} min walk, so you cannot catch the ${t} bus.`,
     home: (t) => `back at your stay around ${t}`,
     lastArr: (t) => `arrives ${t}`,
     taxi: (n) => `Taxi: ${n} (ask your host to call one)`,
@@ -1017,6 +1063,7 @@ const AT = {
     tomorrow: "내일 버스로 확인했습니다",
     go: "가는 길", back: "오는 길", last: "막차",
     leaveInn: (t) => `숙소에서 ${t} 출발`,
+    missed: (n, t) => `버스 정류장까지 걸어서 ${n}분이라 ${t} 버스는 탈 수 없습니다.`,
     home: (t) => `숙소에 ${t}쯤 도착`,
     lastArr: (t) => `${t} 도착`,
     taxi: (n) => `택시: ${n} (호출은 숙소 호스트에게)`,
@@ -1045,6 +1092,7 @@ const AT = {
     tomorrow: "以明天的班次查詢",
     go: "去程", back: "回程", last: "末班車",
     leaveInn: (t) => `${t}從住宿出發`,
+    missed: (n, t) => `走到公車站要${n}分鐘，趕不上${t}的公車。`,
     home: (t) => `約${t}回到住宿`,
     lastArr: (t) => `${t}抵達`,
     taxi: (n) => `計程車：${n}（請屋主幫忙叫車）`,
@@ -1157,6 +1205,10 @@ function renderAnswer(res, q) {
   $("ask-q").textContent = parts.join(" · ");
   $("ask-q").hidden = parts.length === 0;
 
+  // 歩いて間に合わなかった行きの便があれば、その理由を答えの上に出す
+  const missed = $("ask-missed");
+  missed.hidden = !res.missed;
+  if (res.missed) missed.textContent = a.missed(res.missed.walk_minutes, res.missed.dep);
   $("ask-answer").textContent = res.text ?? "";
 
   // 時刻（プログラムが出したもの）

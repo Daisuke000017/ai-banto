@@ -75,3 +75,11 @@ test("時刻の形が違えば受け付けない", () => {
   assert.equal(parseClock("9:05"), 545);
   for (const bad of ["24:00", "10:60", "abc", "", null, "10:0", "1000"]) assert.equal(parseClock(bad), null, String(bad));
 });
+
+test("14:21：歩いて間に合わない14:23は missed に入り、次のバスは間に合う便から", () => {
+  const b = busBoard({ date: "2026-10-10", minutes: 14 * 60 + 21, lang: "ja" });
+  const down = b.directions.find((d) => d.direction === "down");
+  assert.deepEqual(down.missed.map((m) => m.time), ["14:23"]);
+  assert.equal(down.next[0].time, "15:56");
+  for (const d of b.directions) for (const n of d.next) assert.ok(n.in_minutes >= b.stop.walk_minutes);
+});

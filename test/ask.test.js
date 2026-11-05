@@ -175,3 +175,12 @@ test("AIの鍵がないときの自由な質問は「分かりません」", asy
   assert.equal(r.judgment, "unknown");
   assert.match(r.text, /オーナー/);
 });
+
+test("14:21：鵜戸神宮行き14:23は、歩いて8分なので間に合わない（理由を返す）", () => {
+  const p = planTrip({ date: SAT, minutes: at(14, 21), destId: "udo" });
+  assert.equal(p.judgment, "ng");
+  assert.equal(p.reason, "no_go");
+  assert.deepEqual(p.missed, { dep: "14:23", walk_minutes: 8 });
+  // 間に合う便があるときは missed なし（10時は10:33に乗れる）
+  assert.equal(planTrip({ date: SAT, minutes: at(10), destId: "udo" }).missed, null);
+});

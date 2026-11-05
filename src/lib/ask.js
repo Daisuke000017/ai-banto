@@ -96,11 +96,14 @@ export function planTrip({ date, minutes, destId, backBy = null, stay }) {
   const lastLeg = backs.at(-1) ?? null;
   const last = lastLeg ? { dep: lastLeg.dep, arr: lastLeg.arr } : null;
   const goLeg = goes.find((l) => l.depMin >= minutes + walk) ?? null;
-  if (!goLeg) return { judgment: "ng", reason: "no_go", go: null, back: null, last };
+  // いまより後に出るが、宿からバス停まで歩くと間に合わない行きの便（いちばん遅いもの）。理由を画面に出すため
+  const missLeg = goes.filter((l) => l.depMin >= minutes && l.depMin < minutes + walk).at(-1);
+  const missed = missLeg ? { dep: missLeg.dep, walk_minutes: walk } : null;
+  if (!goLeg) return { missed, judgment: "ng", reason: "no_go", go: null, back: null, last };
   const go = { leave_inn: toClock(goLeg.depMin - walk), dep: goLeg.dep, arr: goLeg.arr };
 
   const after = backs.filter((l) => l.depMin >= goLeg.arrMin + MIN_STAY);
-  if (after.length === 0) return { judgment: "ng", reason: "no_back", go, back: null, last };
+  if (after.length === 0) return { missed, judgment: "ng", reason: "no_back", go, back: null, last };
 
   const backView = (l) => ({ dep: l.dep, arr: l.arr, home: toClock(l.arrMin + walk) });
   const isLast = (l) => l === lastLeg;
@@ -111,16 +114,16 @@ export function planTrip({ date, minutes, destId, backBy = null, stay }) {
   if (backBy != null && backLeg.arrMin + walk > backBy) {
     // 戻りたい時刻に間に合う便のうち、いちばん遅い便（向こうに長くいられる）
     const inTime = after.filter((l) => l.arrMin + walk <= backBy);
-    if (inTime.length === 0) return { judgment: "ng", reason: "late", go, back: backView(backLeg), last };
+    if (inTime.length === 0) return { missed, judgment: "ng", reason: "late", go, back: backView(backLeg), last };
     backLeg = inTime.at(-1);
     reason = "short_stay";
   }
 
   const back = backView(backLeg);
-  if (reason === "short_stay") return { judgment: "tight", reason, go, back, last };
-  if (backBy != null && backBy - (backLeg.arrMin + walk) < TIGHT_MINUTES) return { judgment: "tight", reason: "close", go, back, last };
-  if (isLast(backLeg)) return { judgment: "tight", reason: "last_bus", go, back, last };
-  return { judgment: "ok", reason: "ok", go, back, last };
+  if (reason === "short_stay") return { missed, judgment: "tight", reason, go, back, last };
+  if (backBy != null && backBy - (backLeg.arrMin + walk) < TIGHT_MINUTES) return { missed, judgment: "tight", reason: "close", go, back, last };
+  if (isLast(backLeg)) return { missed, judgment: "tight", reason: "last_bus", go, back, last };
+  return { missed, judgment: "ok", reason: "ok", go, back, last };
 }
 
 // ── 3. 説明の文（記号を差し込む） ──
@@ -172,10 +175,10 @@ const FIXED = {
     "zh-TW": "可以去，但在那裡停留的時間較短。回程請搭{BACK_TIME}的公車。",
   },
   no_go: {
-    ja: "もう、行きのバスがありません。",
-    en: "There are no more buses going there.",
-    ko: "이제 가는 버스가 없습니다.",
-    "zh-TW": "已經沒有去程的公車了。",
+    ja: "いまから間に合う行きのバスは、もうありません。",
+    en: "There are no more buses there that you can catch from now.",
+    ko: "지금부터 탈 수 있는 가는 버스가 더 이상 없습니다.",
+    "zh-TW": "現在已經沒有趕得上的去程公車了。",
   },
   no_back: {
     ja: "行きのバスはありますが、その日のうちに戻るバスがありません。",
@@ -279,7 +282,8 @@ export const EXPLAIN_SYSTEM = `あなたは民泊のゲスト向け案内係で�
 - judgment が ng のときは「タクシーを使うか、オーナーに相談してください」という意味の一文を入れる
 - URL・電話番号は書かない
 - 記号の意味：LEAVE_INN＝宿を出る時刻、GO_TIME＝青島のバス停を出るバス、ARRIVE_TIME＝行き先に着く時刻、BACK_TIME＝帰りのバス、HOME_TIME＝宿に戻る時刻、LAST_TIME＝帰りの最終バス、BACK_BY＝ゲストが戻りたい時刻
-- reason の意味：ok＝ゆっくり行って戻れる、close＝戻りたい時刻にぎりぎり、last_bus＝帰りが最終バス、short_stay＝向こうにいられる時間が短い、no_go＝行きのバスがもうない、no_back＝戻るバスがない、late＝戻りたい時刻までに戻れない`;
+- reason の意味：ok＝ゆっくり行って戻れる、close＝戻りたい時刻にぎりぎり、last_bus＝帰りが最終バス、short_stay＝向こうにいられる時間が短い、no_go＝いまから間に合う行きのバスがもうない、no_back＝戻るバスがない、late＝戻りたい時刻までに戻れない
+- missed_bus が true のとき：宿からバス停まで歩くと間に合わない便があった。その説明（歩く時間と便の時刻）はプログラムが別に出すので、あなたは書かない。「バスがもう無い」とは書かず「いまから間に合うバスがない」という意味で書く`;
 
 /** AIの説明の文を確かめる。理由の配列（空なら OK） */
 export function checkExplain(d, allowed) {
@@ -432,7 +436,7 @@ export async function answerAsk(p) {
         task: "ask_explain",
         model: MODELS.annai,
         system: EXPLAIN_SYSTEM,
-        input: { lang, destination: destName(destId, lang), judgment: plan.judgment, reason: plan.reason, placeholders: Object.keys(values) },
+        input: { lang, destination: destName(destId, lang), judgment: plan.judgment, reason: plan.reason, missed_bus: Boolean(plan.missed), placeholders: Object.keys(values) },
         schema: EXPLAIN_SCHEMA,
         validate: (d) => checkExplain(d, Object.keys(values)),
         maxTokens: 400,
@@ -454,6 +458,7 @@ export async function answerAsk(p) {
     now: day === "tomorrow" ? null : toClock(minutes),
     back_by: backBy != null ? toClock(backBy) : null,
     plan: { go: plan.go, back: plan.back, last: plan.last },
+    missed: plan.missed, // 歩いて間に合わなかった行きの便（理由の文は画面が出す）
     text: fillAnswer(template, values),
     text_source: source,
     taxi: plan.judgment === "ng" && p.taxiName ? { name: p.taxiName } : null,

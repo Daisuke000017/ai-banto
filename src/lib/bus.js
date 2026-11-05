@@ -102,7 +102,11 @@ export function busBoard({ date, minutes, lang }) {
   const view = (d) => ({ time: d.time, to: d.to, to_id: d.to_id, arrive: d.arrive, note: d.note, in_minutes: d.min - minutes });
   const directions = ["up", "down"].map((dir) => {
     const all = deps.filter((d) => d.direction === dir);
-    const ahead = all.filter((d) => d.min >= minutes);
+    // 宿からバス停まで歩く分を足して、間に合う便だけを「次のバス」にする。
+    // いまより後でも歩いて間に合わない便は missed で別に返す（画面で小さく「間に合いません」と出す）
+    const walk = innAccess.walk_minutes;
+    const ahead = all.filter((d) => d.min >= minutes + walk);
+    const missed = all.filter((d) => d.min >= minutes && d.min < minutes + walk);
     // 行き先は本数の多い順
     const counts = new Map();
     for (const d of all) counts.set(d.to_id, (counts.get(d.to_id) ?? 0) + 1);
@@ -111,6 +115,7 @@ export function busBoard({ date, minutes, lang }) {
       direction: dir,
       toward,
       map_url: poleMapUrl(dir),
+      missed: missed.map(view),
       next: ahead.slice(0, 3).map(view),
       last: all.length ? view(all[all.length - 1]) : null,
       all: all.map((d) => ({ time: d.time, to: d.to, note: d.note, passed: d.min < minutes })),
