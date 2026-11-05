@@ -4,7 +4,7 @@
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { innProfile, reservations, rooms } from "../seed/demo-reservations.js";
+import { cleaners, cleaningAssignments, innProfile, reservations, rooms } from "../seed/demo-reservations.js";
 import { stayNightRows } from "../src/lib/counting.js";
 import { daysBetween } from "../src/lib/dates.js";
 
@@ -32,6 +32,8 @@ export function buildSeedSql() {
   const lines = [
     "-- 自動生成（npm run seed:build）。手で直さず seed/demo-reservations.js を直す。",
     "-- 中身はすべて架空データ。",
+    "DELETE FROM cleaning_assignments;",
+    "DELETE FROM cleaners;",
     "DELETE FROM discrepancies;",
     "DELETE FROM bank_deposits;",
     "DELETE FROM ota_lines;",
@@ -51,6 +53,8 @@ export function buildSeedSql() {
   ];
   for (const r of rooms) lines.push(insert("rooms", ["code", "name", "sort_order"], r));
   lines.push("");
+  for (const c of cleaners) lines.push(insert("cleaners", ["id", "name", "sort_order"], c));
+  lines.push("");
   for (const r of reservations) {
     lines.push(insert("reservations", RES_COLS, { ...r, nights: daysBetween(r.checkin_date, r.checkout_date) }));
   }
@@ -58,6 +62,8 @@ export function buildSeedSql() {
   for (const s of stayNightRows(reservations)) {
     lines.push(insert("stay_nights", ["reservation_id", "night", "fiscal_year", "guests"], s));
   }
+  lines.push("");
+  for (const a of cleaningAssignments) lines.push(insert("cleaning_assignments", ["reservation_id", "date", "room", "cleaner_id"], a));
   return lines.join("\n") + "\n";
 }
 

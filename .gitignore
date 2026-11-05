@@ -26,3 +26,8 @@ data/private/
 # --- その他 ---
 .DS_Store
 *.log
+
+# --- 手元だけのもの（公開しない） ---
+logs/
+screenshots/
+docs/06_動画台本.md

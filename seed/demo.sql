@@ -1,5 +1,7 @@
 -- 自動生成（npm run seed:build）。手で直さず seed/demo-reservations.js を直す。
 -- 中身はすべて架空データ。
+DELETE FROM cleaning_assignments;
+DELETE FROM cleaners;
 DELETE FROM discrepancies;
 DELETE FROM bank_deposits;
 DELETE FROM ota_lines;
@@ -18,6 +20,9 @@ INSERT INTO inn_profile (id, name, type, rooms, address, lat, lng, checkin_metho
 
 INSERT INTO rooms (code, name, sort_order) VALUES ('A', '部屋A', 1);
 INSERT INTO rooms (code, name, sort_order) VALUES ('B', '部屋B', 2);
+
+INSERT INTO cleaners (id, name, sort_order) VALUES (1, 'さくら（架空）', 1);
+INSERT INTO cleaners (id, name, sort_order) VALUES (2, 'みなと（架空）', 2);
 
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R01', 'airbnb', 'DEMO-0001', '架空ゲスト01', '2026-04-29', '2026-05-02', 3, 2, 0, 0, 'ja', 'unknown', NULL, '{"JP":2}', 54000, 'A', 'confirmed', 0, 0, NULL);
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R02', 'booking', 'DEMO-0002', '架空ゲスト02', '2026-05-03', '2026-05-05', 2, 4, 0, 0, 'zh-TW', 'unknown', NULL, '{"TW":4}', 48000, 'A', 'confirmed', 0, 0, NULL);
@@ -82,3 +87,5 @@ INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R1
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R17', '2027-01-01', '2026', 2);
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R18', '2027-03-31', '2026', 3);
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R18', '2027-04-01', '2027', 3);
+
+INSERT INTO cleaning_assignments (reservation_id, date, room, cleaner_id) VALUES ('R14', '2026-10-12', 'A', 1);

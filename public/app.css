@@ -164,6 +164,9 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 .clean-turn { font-size: 17px; font-weight: 700; }
 .clean-turn .pill { margin-right: var(--s2); }
 .clean-body .notice { margin-top: var(--s2); }
+.clean-who { margin-top: var(--s3); max-width: 22em; }
+.clean-body .btns { margin-top: var(--s3); }
+.clean-body details .draft-text { margin-top: var(--s2); }
 @media (min-width: 640px) {
   .clean-list li { grid-template-columns: 11em minmax(0, 1fr); }
   .clean-date { flex-direction: column; gap: 0; }

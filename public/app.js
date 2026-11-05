@@ -874,51 +874,145 @@ async function showCleaning() {
   const p = $("panel-cleaning");
   p.replaceChildren(loading("プログラムが数えています"));
   try {
-    p.replaceChildren(cleaningCard(await api("/api/cleaning")));
+    renderCleaning(await api("/api/cleaning"));
   } catch (err) {
     p.replaceChildren(errorBox(err, showCleaning));
   }
 }
 
-function cleaningCard(d) {
+// 清掃の画面：日ごとに担当を選び、担当の人あての文面をコピーする（送るのはオーナー本人）
+function renderCleaning(d) {
+  const p = $("panel-cleaning");
+  const problems = el("div", { attrs: { "aria-live": "polite" } });
+  const send = async (path, body, done, ctl) => {
+    if (ctl) ctl.disabled = true;
+    try {
+      const r = await api(path, { method: "POST", body });
+      renderCleaning(r);
+      toast(done(r));
+    } catch (err) {
+      if (ctl) ctl.disabled = false;
+      problems.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+      problems.scrollIntoView({ block: "nearest" });
+    }
+  };
+  p.replaceChildren(cleaningCard(d, send, problems), cleanersCard(d, send));
+}
+
+function cleaningCard(d, send, problems) {
   const w = d.window;
   const turnovers = d.items.filter((i) => i.turnover).length;
+  const open = d.items.filter((i) => i.cleaner_id == null).length;
+  const active = d.cleaners.filter((c) => c.active);
   const card = el("article", { cls: "card" }, [
     el("h2", { text: "清掃が必要な日（今日から3週間）" }),
     el("p", { cls: "lead" }, [
       `${jpDate(d.from)}〜${jpDate(d.to)}　`,
       el("b", { text: `${d.items.length}件` }),
       turnovers ? `（うち入れ替え ${turnovers}件）` : "",
+      d.items.length && active.length ? `　担当まだ ${open}件` : "",
     ]),
   ]);
   if (!d.items.length) {
     card.append(el("p", { cls: "state", text: "この3週間に清掃の日はありません" }));
   } else {
-    card.append(
-      el(
-        "ul",
-        { cls: "clean-list" },
-        d.items.map((i) => {
-          const n = daysFrom(d.today, i.date);
-          return el("li", { cls: i.turnover ? "is-turnover" : "" }, [
-            el("div", { cls: "clean-date" }, [el("b", { text: jpDate(i.date) }), el("span", { text: whenText(n) })]),
-            el("div", { cls: "clean-body" }, [
-              el("p", { cls: "clean-room" }, [el("b", { text: i.room ? roomName(i.room) : "部屋が決まっていません" }), `${OTA[i.ota] ?? i.ota ?? ""}のお客様がチェックアウト`]),
-              i.turnover
-                ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `チェックアウト〜チェックインの間（${w.checkout}〜${w.checkin}）に清掃`])
-                : el("p", { cls: "clean-sub", text: `${w.checkout}以降に清掃（この日、同じ部屋のチェックインはありません）` }),
-              i.check_room ? el("p", { cls: "notice warn", text: "同じ日にチェックインがあります。部屋を確かめてください" }) : null,
-            ]),
-          ]);
-        }),
-      ),
-    );
+    if (!active.length) card.append(el("p", { cls: "notice info", text: "下の「担当の人」で名前を登録すると、日ごとに担当を選べます" }));
+    card.append(el("ul", { cls: "clean-list" }, d.items.map((i) => cleanItem(d, i, active, send))));
   }
   card.append(
+    problems,
     el("details", {}, [el("summary", { text: "数え方" }), el("p", { cls: "notice info", text: d.how })]),
-    el("p", { cls: "notice info", text: `清掃できる時間は ${w.checkout}〜${w.checkin}（宿の設定）。この画面は見るだけです。清掃の担当を決める・知らせることはしません` }),
+    el("p", { cls: "notice info", text: `清掃できる時間は ${w.checkout}〜${w.checkin}（宿の設定）。担当の人あての文面は、コピーしてご本人が送ってください。番頭は送りません` }),
   );
   return card;
+}
+
+function cleanItem(d, i, active, send) {
+  const w = d.window;
+  const n = daysFrom(d.today, i.date);
+  const body = [
+    el("p", { cls: "clean-room" }, [el("b", { text: i.room ? roomName(i.room) : "部屋が決まっていません" }), `${OTA[i.ota] ?? i.ota ?? ""}のお客様がチェックアウト`]),
+    i.turnover
+      ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `チェックアウト〜チェックインの間（${w.checkout}〜${w.checkin}）に清掃`])
+      : el("p", { cls: "clean-sub", text: `${w.checkout}以降に清掃（この日、同じ部屋のチェックインはありません）` }),
+    i.check_room ? el("p", { cls: "notice warn", text: "同じ日にチェックインがあります。部屋を確かめてください" }) : null,
+  ];
+  // 担当を選ぶ（止めた人が担当のままなら、その人も選択肢に残す）
+  const choices = [...active];
+  if (i.cleaner_id != null && !i.cleaner_active) choices.push({ id: i.cleaner_id, name: `${i.cleaner_name}（止めた人）` });
+  if (choices.length) {
+    const id = `clean-who-${i.reservation_id}`;
+    const sel = el("select", { attrs: { id } }, [
+      el("option", { text: "まだ決めていない", attrs: { value: "" } }),
+      ...choices.map((c) => el("option", { text: `${c.name}さん`, attrs: { value: String(c.id) } })),
+    ]);
+    sel.value = i.cleaner_id == null ? "" : String(i.cleaner_id);
+    sel.addEventListener("change", () => {
+      const cid = sel.value === "" ? null : Number(sel.value);
+      const who = choices.find((c) => c.id === cid)?.name;
+      send("/api/cleaning/assign", { reservation_id: i.reservation_id, cleaner_id: cid }, () => (cid == null ? "担当を「まだ決めていない」に戻しました" : `${who}さんを担当にしました`), sel);
+    });
+    body.push(el("div", { cls: "field clean-who" }, [el("label", { text: `${jpDate(i.date)}の担当`, attrs: { for: id } }), sel]));
+  }
+  if (i.reassign) {
+    const what = i.reassign_reason === "room" ? "部屋" : "チェックアウトの日";
+    body.push(el("p", { cls: "notice warn", text: `${what}が変わったので、前に決めた担当は外しました。選び直してください（前に送った文面とちがいます）` }));
+  }
+  if (i.cleaner_id != null && !i.cleaner_active) body.push(el("p", { cls: "notice warn", text: `${i.cleaner_name}さんは止めています。担当を替えてください` }));
+  if (i.same_day >= 2) body.push(el("p", { cls: "notice warn", text: `${i.cleaner_name}さんは、この日${i.same_day}部屋の担当です。時間が足りるか確かめてください` }));
+  if (i.message) {
+    const copy = async () => {
+      try {
+        await navigator.clipboard.writeText(i.message);
+        toast("コピーしました。送るのはご本人です");
+      } catch {
+        toast("コピーできませんでした。下の文面を長押しして写してください");
+      }
+    };
+    body.push(
+      el("div", { cls: "btns" }, [btn("文面をコピー", copy, "btn small")]),
+      el("details", {}, [el("summary", { text: `${i.cleaner_name}さんあての文面を見る` }), el("p", { cls: "draft-text", text: i.message })]),
+    );
+  }
+  return el("li", { cls: i.turnover ? "is-turnover" : "" }, [
+    el("div", { cls: "clean-date" }, [el("b", { text: jpDate(i.date) }), el("span", { text: whenText(n) })]),
+    el("div", { cls: "clean-body" }, body),
+  ]);
+}
+
+function cleanersCard(d, send) {
+  const items = d.cleaners.map((c) => {
+    const id = `cleaner-${c.id}`;
+    const name = el("input", { cls: "text-in", attrs: { id, type: "text", maxlength: "20", autocomplete: "off" } });
+    name.value = c.name;
+    return el("li", { cls: `room-item${c.active ? "" : " is-off"}` }, [
+      el("div", { cls: "field" }, [el("label", { text: "名前", attrs: { for: id } }), name]),
+      el("p", { cls: "room-facts" }, [
+        el("span", { cls: c.active ? "pill ok" : "pill", text: c.active ? "頼んでいる" : "止めている" }),
+        c.upcoming ? `この3週間の担当 ${c.upcoming}件` : "この3週間の担当はありません",
+      ]),
+      el("div", { cls: "btns" }, [
+        btn("名前を保存", () => send(`/api/cleaners/${c.id}`, { name: name.value }, () => "名前を保存しました"), "btn small"),
+        c.active
+          ? btn("この人を止める", () => send(`/api/cleaners/${c.id}`, { active: false }, () => `${c.name}さんを止めました`), "btn small")
+          : btn("また頼む", () => send(`/api/cleaners/${c.id}`, { active: true }, () => `${c.name}さんをまた選べるようにしました`), "btn small"),
+      ]),
+    ]);
+  });
+  const addName = el("input", { cls: "text-in", attrs: { id: "cleaner-new", type: "text", maxlength: "20", autocomplete: "off", placeholder: "例：山田さん" } });
+  const canAdd = d.cleaners.length < d.max_cleaners;
+  return el("article", { cls: "card" }, [
+    el("h2", { text: "担当の人" }),
+    el("p", { cls: "lead", text: "清掃をお願いしている人の名前を登録します。登録した人を、上の日ごとに選べます" }),
+    items.length ? el("ul", { cls: "room-list" }, items) : el("p", { cls: "state", text: "まだ登録されていません" }),
+    canAdd
+      ? el("div", { cls: "room-add" }, [
+          el("div", { cls: "field" }, [el("label", { text: "担当の人を足す（名前）", attrs: { for: "cleaner-new" } }), addName]),
+          el("div", { cls: "btns" }, [btn("担当の人を足す", () => send("/api/cleaners", { name: addName.value }, () => "担当の人を足しました"), "btn primary")]),
+        ])
+      : el("p", { cls: "notice info", text: `担当の人は${d.max_cleaners}人までです` }),
+    el("p", { cls: "notice info", text: "番頭が預かるのは名前だけです（電話番号などの連絡先は入れません）。呼び名でも登録できます。止めた人は、これまでの記録のために残ります。名前を消したいときは「元担当1」などに書き替えてください。この3週間の担当がある人は、先に担当を替えるまで止められません" }),
+  ]);
 }
 
 // ---- 宿泊カレンダー（M21）：見るだけ。プログラムが台帳から並べる ----
@@ -1062,7 +1156,7 @@ function calCard(d) {
   show();
   card.append(
     el("details", {}, [el("summary", { text: "数え方" }), el("p", { cls: "notice info", text: d.how })]),
-    el("p", { cls: "notice info", text: "この画面は見るだけです。予約を入れる・変える、清掃の担当を決めることはしません" }),
+    el("p", { cls: "notice info", text: "この画面は見るだけです。予約は「予約の台帳」、清掃の担当は「清掃」の画面で決めます" }),
   );
   return card;
 }
@@ -3302,7 +3396,11 @@ async function loadFacts() {
       set("fact-calendar", ["今夜：", el("b", { text: tonight }), "　", el("span", { cls: "nw", text: `${mm}の予約${d.summary.reservations}件` })]);
     }),
     api("/api/cleaning").then((d) =>
-      set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), `　3週間で${new Set(d.items.map((i) => i.date)).size}日`] : ["3週間、清掃の日はありません"]),
+      {
+        const open = d.items.filter((i) => i.cleaner_id == null).length;
+        const tail = d.cleaners?.some((c) => c.active) && open ? `　担当まだ${open}件` : "";
+        set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), `　3週間で${new Set(d.items.map((i) => i.date)).size}日`, tail] : ["3週間、清掃の日はありません"]);
+      }
     ),
   ]);
 }

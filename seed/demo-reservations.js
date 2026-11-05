@@ -41,6 +41,13 @@ export const rooms = [
   { code: "B", name: "部屋B", sort_order: 2 },
 ];
 
+// 清掃の担当（架空の人。名前だけ）。10/12 は「さくら」さんに決めてあり、10/26 はまだ決めていない
+export const cleaners = [
+  { id: 1, name: "さくら（架空）", sort_order: 1 },
+  { id: 2, name: "みなと（架空）", sort_order: 2 },
+];
+export const cleaningAssignments = [{ reservation_id: "R14", date: "2026-10-12", room: "A", cleaner_id: 1 }];
+
 const g = (n) => `架空ゲスト${n}`;
 
 // 基本は 部屋A。lodging_tax_collected：予約サイトや宿が預かった宿泊税（円）。null＝分からない

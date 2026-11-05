@@ -66,6 +66,7 @@ import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
+import { checkAssignment, checkCleanerName, cleanerNameKey, MAX_CLEANERS, withAssignments } from "./lib/cleaners.js";
 import { stayCalendar } from "./lib/calendar.js";
 import { checkRoomName, MAX_ROOMS, nextRoomCode, roomCodes } from "./lib/rooms.js";
 import { checkCancelFee, checkReservationInput, partyChanged, roomClash, sameNumber } from "./lib/reservation-edit.js";
@@ -298,14 +299,7 @@ async function handleGet(url, env, today) {
       },
     });
   }
-  if (p === "/api/cleaning") {
-    // 清掃が必要な日（M18）：今日から3週間。名前は読まない。AIは使わない
-    const inn = await loadInn(env);
-    const { results } = await env.DB.prepare(
-      "SELECT id, ota, room, checkin_date, checkout_date, status FROM reservations WHERE status = 'confirmed' ORDER BY checkout_date, id",
-    ).all();
-    return json(cleaningDays(results, today, inn));
-  }
+  if (p === "/api/cleaning") return json(await cleaningView(env, today));
   if (p === "/api/calendar") {
     // 宿泊カレンダー（M21）：1か月分。名前は読まない。AIは使わない
     const month = url.searchParams.get("month") ?? monthOf(today);
@@ -1111,6 +1105,99 @@ async function handleLedgerPost(request, url, env, today) {
 
 const isLedgerPath = (p) => p === "/api/ledger" || p.startsWith("/api/ledger/");
 
+// ---- 清掃が必要な日（M18）と、清掃の担当（オーナーが決める）。AIは使わない ----
+// 今日から3週間。ゲストの名前は読まない。担当の人は名前だけ。知らせはオーナーがコピーして送る
+async function cleaningView(env, today) {
+  const inn = await loadInn(env);
+  const { results } = await env.DB.prepare(
+    "SELECT id, ota, room, checkin_date, checkout_date, status FROM reservations WHERE status = 'confirmed' ORDER BY checkout_date, id",
+  ).all();
+  const d = cleaningDays(results, today, inn);
+  const [cl, asg] = await Promise.all([
+    env.DB.prepare("SELECT id, name, sort_order, active FROM cleaners ORDER BY sort_order, id").all(),
+    env.DB.prepare(
+      `SELECT a.reservation_id, a.date, a.room, a.cleaner_id FROM cleaning_assignments a
+       JOIN reservations r ON r.id = a.reservation_id
+       WHERE r.status = 'confirmed' AND r.checkout_date BETWEEN ? AND ?`,
+    )
+      .bind(d.from, d.to)
+      .all(),
+  ]);
+  const people = (cl.results ?? []).map((c) => ({ id: c.id, name: c.name, sort_order: c.sort_order, active: c.active === 1 }));
+  const items = withAssignments(d.items, asg.results ?? [], people, { window: d.window, roomList: inn.all_rooms, innName: inn.name ?? "" });
+  const cleaners = people.map((c) => ({ ...c, upcoming: items.filter((i) => i.cleaner_id === c.id).length }));
+  return { ...d, items, cleaners, max_cleaners: MAX_CLEANERS };
+}
+
+async function handleCleanerPost(request, url, env, today) {
+  const p = url.pathname;
+  const body = await readJsonBody(request, url);
+  const view = await cleaningView(env, today);
+  // 同じ名前が同時に2回届いたとき（DB の重複止めに当たったとき）も、ふつうの案内にする
+  const saveName = async (run) => {
+    try {
+      return await run();
+    } catch (e) {
+      if (/UNIQUE constraint failed: cleaners\.name/.test(String(e?.message))) throw new HttpError(400, "その名前は、もう登録されています");
+      throw e;
+    }
+  };
+  const taken = (name, selfId = null) => view.cleaners.some((c) => cleanerNameKey(c.name) === cleanerNameKey(name) && c.id !== selfId);
+
+  if (p === "/api/cleaners") {
+    const named = checkCleanerName(body.name);
+    if (named.error) throw new HttpError(400, named.error);
+    if (view.cleaners.length >= MAX_CLEANERS) throw new HttpError(400, `担当の人は${MAX_CLEANERS}人までです`);
+    if (taken(named.name)) throw new HttpError(400, `「${named.name}」さんは、もう登録されています`);
+    const order = view.cleaners.reduce((m, c) => Math.max(m, c.sort_order), 0) + 1;
+    await saveName(() => env.DB.prepare("INSERT INTO cleaners (name, sort_order) VALUES (?, ?)").bind(named.name, order).run());
+    return json(await cleaningView(env, today));
+  }
+
+  const m = p.match(/^\/api\/cleaners\/(\d{1,9})$/);
+  if (m) {
+    const c = view.cleaners.find((x) => x.id === Number(m[1]));
+    if (!c) throw new HttpError(404, "その担当の人は見つかりません");
+    const stmts = [];
+    if ("name" in body) {
+      const named = checkCleanerName(body.name);
+      if (named.error) throw new HttpError(400, named.error);
+      if (taken(named.name, c.id)) throw new HttpError(400, `「${named.name}」さんは、もう登録されています`);
+      stmts.push(env.DB.prepare("UPDATE cleaners SET name = ? WHERE id = ?").bind(named.name, c.id));
+    }
+    if ("active" in body) {
+      if (typeof body.active !== "boolean") throw new HttpError(400, "active は true か false で送ってください");
+      if (!body.active && c.upcoming > 0) {
+        throw new HttpError(400, `「${c.name}」さんには、これからの清掃が${c.upcoming}件あるので止められません。先に担当を替えてください`);
+      }
+      stmts.push(env.DB.prepare("UPDATE cleaners SET active = ? WHERE id = ?").bind(body.active ? 1 : 0, c.id));
+    }
+    if (!stmts.length) throw new HttpError(400, "変える項目がありません");
+    await saveName(() => env.DB.batch(stmts));
+    return json(await cleaningView(env, today));
+  }
+
+  if (p === "/api/cleaning/assign") {
+    const checked = checkAssignment(body, { items: view.items, cleaners: view.cleaners });
+    if (checked.error) throw new HttpError(400, checked.error);
+    const v = checked.values;
+    if (v.cleaner_id == null) {
+      await env.DB.prepare("DELETE FROM cleaning_assignments WHERE reservation_id = ?").bind(v.reservation_id).run();
+    } else {
+      await env.DB.prepare(
+        `INSERT INTO cleaning_assignments (reservation_id, date, room, cleaner_id) VALUES (?, ?, ?, ?)
+         ON CONFLICT (reservation_id) DO UPDATE SET date = excluded.date, room = excluded.room, cleaner_id = excluded.cleaner_id, updated_at = datetime('now')`,
+      )
+        .bind(v.reservation_id, v.date, v.room, v.cleaner_id)
+        .run();
+    }
+    return json(await cleaningView(env, today));
+  }
+  return null;
+}
+
+const isCleanerPath = (p) => p === "/api/cleaners" || p.startsWith("/api/cleaners/") || p === "/api/cleaning/assign";
+
 const isSettingsPath = (p) => p === "/api/settings/inn" || p === "/api/rooms" || p.startsWith("/api/rooms/");
 
 const isMoneyPath = (p) => p.startsWith("/api/uploads") || p === "/api/reconcile" || p.startsWith("/api/discrepancies") || p.startsWith("/api/statements");
@@ -1165,6 +1252,9 @@ export default {
         if (res) return res;
       } else if (request.method === "POST" && isLedgerPath(url.pathname)) {
         const res = await handleLedgerPost(request, url, env, today);
+        if (res) return res;
+      } else if (request.method === "POST" && isCleanerPath(url.pathname)) {
+        const res = await handleCleanerPost(request, url, env, today);
         if (res) return res;
       } else if (request.method === "POST" && isSettingsPath(url.pathname)) {
         const res = await handleSettingsPost(request, url, env, today);
