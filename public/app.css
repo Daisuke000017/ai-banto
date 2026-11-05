@@ -742,6 +742,7 @@ body.drill::after {
 .cal-legend .sw.unknown { background: var(--warn-bg); outline: 2px solid var(--warn); outline-offset: -2px; }
 .cal-legend .sw.over { background: var(--danger-bg); outline: 2px solid var(--danger); outline-offset: -2px; }
 .cal-legend .sw.clean { width: 14px; background: transparent; border: 2px solid var(--ink-sub); border-radius: 3px; }
+.cal-legend .sw.clean.done { background: var(--ok); border-color: var(--ok); }
 .cal-legend .sw.clean.turn { width: 16px; height: 16px; border: 3px solid var(--glow); border-radius: 4px; background: var(--glow-bg); }
 .cal-legend .sw.lane { height: 6px; border-radius: 3px; }
 .cal-legend .sw.lane.b { background: var(--chart-2); }

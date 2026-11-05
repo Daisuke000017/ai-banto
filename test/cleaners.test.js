@@ -134,3 +134,28 @@ test("清掃の担当のAPIは、ログインしないと開けない（一覧�
     assert.equal(isOpenPath(m, p), false, `${m} ${p}`);
   }
 });
+
+test("カレンダー：日付と部屋が合う割り当てだけ、チェックアウトに担当の名前を付ける", async () => {
+  const { markCleaners } = await import("../src/lib/cleaners.js");
+  const { stayCalendar } = await import("../src/lib/calendar.js");
+  const R = (id, room, ci, co) => ({ id, ota: "airbnb", room, checkin_date: ci, checkout_date: co, adults: 1, children: 0, infants: 0, status: "confirmed" });
+  const cal = stayCalendar([R(1, "A", "2026-10-10", "2026-10-12"), R(2, "B", "2026-10-10", "2026-10-12"), R(3, "A", "2026-10-13", "2026-10-15")], "2026-10", "2026-10-01");
+  const people = [{ id: 1, name: "さくら(架空)", active: true }, { id: 2, name: "もみじ(架空)", active: false }];
+  const asg = [
+    { reservation_id: 1, date: "2026-10-12", room: "A", cleaner_id: 1 },
+    { reservation_id: 2, date: "2026-10-12", room: "A", cleaner_id: 1 }, // 部屋がちがう → 付けない
+    { reservation_id: 3, date: "2026-10-15", room: "A", cleaner_id: 2 }, // 止めた人
+  ];
+  const out = markCleaners(cal, asg, people);
+  const d12 = out.days.find((d) => d.date === "2026-10-12").departures;
+  assert.equal(d12.find((r) => r.reservation_id === 1).cleaner_name, "さくら(架空)");
+  assert.equal(d12.find((r) => r.reservation_id === 2).cleaner_name, null);
+  const d15 = out.days.find((d) => d.date === "2026-10-15").departures[0];
+  assert.equal(d15.cleaner_name, "もみじ(架空)");
+  assert.equal(d15.cleaner_active, false);
+  // 日付がずれた割り当ては付けない
+  const moved = markCleaners(cal, [{ reservation_id: 1, date: "2026-10-11", room: "A", cleaner_id: 1 }], people);
+  assert.equal(moved.days.find((d) => d.date === "2026-10-12").departures[0].cleaner_name, null);
+  // 元のカレンダーは書きかえない
+  assert.equal(cal.days.find((d) => d.date === "2026-10-12").departures[0].cleaner_name, undefined);
+});

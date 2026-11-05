@@ -1060,9 +1060,9 @@ function calMonths() {
   return el("div", { cls: "months" }, [back, label, fwd]);
 }
 
-// 見かたは2つ：「帯」（部屋ごとの横の帯。入る日の午後から、出る日の午前まで）と「月」（7列の表。文字なしで泊まりと清掃の日だけ）
+// 見かたは2つ：「週」（部屋ごとの横の帯。入る日の午後から、出る日の午前まで。1か月を横にずらして見る）と「月」（7列の表。文字なしで泊まりと清掃の日だけ）
 const CAL_VIEWS = [
-  ["bar", "帯で見る"],
+  ["bar", "週で見る"],
   ["month", "月で見る"],
 ];
 const dayNo = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
@@ -1161,6 +1161,24 @@ function calCard(d) {
   return card;
 }
 
+// 清掃の担当（清掃の画面で決めたもの）。止めた人は「決まっていない」とみなす
+const cleanAssigned = (r) => Boolean(r.cleaner_name && r.cleaner_active);
+// その日のチェックアウトすべてに担当が決まっていれば、印にチェックを付ける
+const cleanDone = (day) => day.departures.length > 0 && day.departures.every(cleanAssigned);
+function cleanWhoLabel(day) {
+  const n = day.departures.filter(cleanAssigned).length;
+  if (n === day.departures.length) return "担当は決まっています";
+  return n ? `担当は${day.departures.length}件のうち${n}件決まっています` : "担当はまだ決まっていません";
+}
+// 予約の詳細で使う：その予約の、出る日のチェックアウト（担当つき）
+const calOut = (d, r) => d.days.find((x) => x.date === r.checkout_date)?.departures.find((o) => o.reservation_id === r.reservation_id) ?? null;
+function cleanWhoLine(r) {
+  if (!r) return null;
+  if (cleanAssigned(r)) return el("p", { cls: "cal-sub", text: `清掃の担当：${r.cleaner_name}さん` });
+  if (r.cleaner_name) return el("p", { cls: "notice warn", text: `清掃の担当（${r.cleaner_name}さん）は止めた人です。「清掃」の画面で選び直してください` });
+  return el("p", { cls: "cal-sub", text: "清掃の担当：まだ決めていません" });
+}
+
 // 見かたの説明（色だけで伝えない。言葉を添える）
 function calLegend(view, f) {
   const sw = (cls) => el("span", { cls: `sw ${cls}`, attrs: { "aria-hidden": "true" } });
@@ -1171,18 +1189,20 @@ function calLegend(view, f) {
           f.hasUnknown ? el("li", {}, [sw("bar unknown"), "部屋が決まっていない予約"]) : null,
           f.hasOver ? el("li", {}, [sw("bar over"), "同じ部屋で重なっている予約"]) : null,
           el("li", {}, [sw("clean"), "清掃の日（チェックアウトの日）"]),
+          el("li", {}, [sw("clean done"), "清掃の担当が決まった日"]),
           f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替え（同じ日に次の人が入る）"]) : null,
         ]
       : [
           ...CAL_LIST.map((room, i) => el("li", {}, [sw(`lane ${roomTone(CAL_LIST, room)}`), `上から${i + 1}本目：${roomName(room)}の泊まり`])),
           f.hasUnknown ? el("li", {}, [sw("lane unknown"), "部屋未定の泊まり"]) : null,
           el("li", {}, [sw("clean"), "清掃の日"]),
+          el("li", {}, [sw("clean done"), "清掃の担当が決まった日"]),
           f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替えの日"]) : null,
         ];
   return el("ul", { cls: "cal-legend", attrs: { "aria-label": "見かた" } }, items);
 }
 
-// 帯で見る：部屋ごとの行 × 日（1日を午前・午後の2つに分ける）。いつも1か月を横1列。入りきらない画面では横にずらす（部屋の名前の列は左に止まる）
+// 週で見る：部屋ごとの行 × 日（1日を午前・午後の2つに分ける）。いつも1か月を横1列。入りきらない画面では横にずらす（部屋の名前の列は左に止まる）
 function calTimeline(d, books, pickDay, pickStay) {
   const first = dayNo(d.days[0].date);
   const last = dayNo(d.days[d.days.length - 1].date);
@@ -1285,10 +1305,11 @@ function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
     const day = byNo.get(no);
     if (!day?.departures.length) continue;
     const turn = day.departures.some((r) => r.room && day.stays.some((st) => st.arrives && st.room === r.room));
+    const done = cleanDone(day);
     put(
       el("button", {
-        cls: `tl-clean${turn ? " turn" : ""}`,
-        attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": `${jpDate(day.date)}：清掃${turn ? "（入れ替え）" : ""}。チェックアウト${day.departures.length}件` },
+        cls: `tl-clean${turn ? " turn" : ""}${done ? " done" : ""}`,
+        attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": `${jpDate(day.date)}：清掃${turn ? "（入れ替え）" : ""}。チェックアウト${day.departures.length}件。${cleanWhoLabel(day)}` },
         on: { click: pickDay(day) },
       }),
       `${colOf(no)} / span 2`,
@@ -1320,7 +1341,7 @@ function calMonthGrid(d, pickDay, hasUnknown) {
         [
           el("span", { cls: "n", text: Number(day.date.slice(8)) }),
           el("span", { cls: "mn-lanes" }, lanes.map(lane)),
-          day.departures.length ? el("span", { cls: `mn-clean${turn ? " turn" : ""}`, attrs: { "aria-hidden": "true" } }) : null,
+          day.departures.length ? el("span", { cls: `mn-clean${turn ? " turn" : ""}${cleanDone(day) ? " done" : ""}`, attrs: { "aria-hidden": "true" } }) : null,
         ],
       ),
     );
@@ -1339,6 +1360,7 @@ function calStayDetail(d, b) {
     b.turn
       ? el("p", { cls: "clean-turn" }, [el("span", { cls: "pill warn", text: "入れ替え" }), `${jpDate(r.checkout_date, false)}の${w.checkout}〜${w.checkin}の間に清掃（同じ日に次の人が入ります）`])
       : el("p", { cls: "cal-sub", text: `清掃：${jpDate(r.checkout_date, false)}の${w.checkout}以降` }),
+    cleanWhoLine(calOut(d, r)),
     !r.room ? el("p", { cls: "notice warn", text: "部屋が決まっていない予約です。台帳で部屋を確かめてください" }) : null,
     b.over ? el("p", { cls: "notice danger", text: `${roomName(r.room)}で別の予約と重なっています。台帳を確かめてください` }) : null,
   ];
@@ -1368,7 +1390,7 @@ function calDayLabel(day) {
   });
   const unknown = day.stays.filter((s) => !s.room).length;
   if (unknown) parts.push(`部屋未定 ${unknown}件`);
-  if (day.departures.length) parts.push(`チェックアウト ${day.departures.length}件（清掃）`);
+  if (day.departures.length) parts.push(`チェックアウト ${day.departures.length}件（清掃。${cleanWhoLabel(day)}）`);
   return `${jpDate(day.date)}${day.is_today ? "・今日" : ""}：${parts.join("、")}`;
 }
 
@@ -1381,7 +1403,7 @@ function calDetail(d, day) {
     const outs = day.departures.filter((r) => r.room === room);
     if (room === null && !stays.length && !outs.length) continue;
     const lines = [];
-    for (const r of outs) lines.push(el("p", {}, [el("span", { cls: "pill out", text: "チェックアウト" }), `${OTA[r.ota] ?? r.ota ?? ""}（${PEOPLE(r)}）`]));
+    for (const r of outs) lines.push(el("p", {}, [el("span", { cls: "pill out", text: "チェックアウト" }), `${OTA[r.ota] ?? r.ota ?? ""}（${PEOPLE(r)}）`]), cleanWhoLine(r));
     for (const st of stays) {
       lines.push(
         el("p", {}, [

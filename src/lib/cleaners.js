@@ -112,3 +112,21 @@ export function cleanerMessage({ name, date, jobs, window, roomList = [], innNam
   if (innName) lines.push(innName);
   return lines.join("\n");
 }
+
+/**
+ * 宿泊カレンダーのチェックアウトに、清掃の担当を付ける（清掃の画面と同じ決まり）。
+ * - 割り当てた日・部屋が、いまのチェックアウトの日・部屋と同じときだけ「担当あり」
+ * - cleaner_name：担当の名前（なければ null）。cleaner_active：その人が止めた人なら false
+ * cal は stayCalendar の結果。元の cal は書きかえない
+ */
+export function markCleaners(cal, assignments, cleaners) {
+  const byRes = new Map(assignments.map((a) => [a.reservation_id, a]));
+  const byId = new Map(cleaners.map((c) => [c.id, c]));
+  const mark = (r) => {
+    const a = byRes.get(r.reservation_id);
+    const c = a ? byId.get(a.cleaner_id) : null;
+    const ok = Boolean(a && c && a.date === r.checkout_date && (a.room ?? null) === (r.room ?? null));
+    return { ...r, cleaner_name: ok ? c.name : null, cleaner_active: ok ? c.active : null };
+  };
+  return { ...cal, days: cal.days.map((d) => ({ ...d, departures: d.departures.map(mark) })) };
+}

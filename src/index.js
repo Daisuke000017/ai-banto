@@ -66,7 +66,7 @@ import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
-import { checkAssignment, checkCleanerName, cleanerNameKey, MAX_CLEANERS, withAssignments } from "./lib/cleaners.js";
+import { checkAssignment, checkCleanerName, cleanerNameKey, markCleaners, MAX_CLEANERS, withAssignments } from "./lib/cleaners.js";
 import { stayCalendar } from "./lib/calendar.js";
 import { checkRoomName, MAX_ROOMS, nextRoomCode, roomCodes } from "./lib/rooms.js";
 import { checkCancelFee, checkReservationInput, partyChanged, roomClash, sameNumber } from "./lib/reservation-edit.js";
@@ -316,7 +316,20 @@ async function handleGet(url, env, today) {
     const list = inn.room_list.length
       ? [...inn.room_list, ...inn.all_rooms.filter((r) => r.active !== 1 && used.has(r.code)).map(({ code, name }) => ({ code, name }))]
       : null;
-    return json({ ...stayCalendar(results, month, today, list ?? roomsOf(inn)), room_list: list ?? [], window: cleaningWindow(inn) });
+    // 清掃の担当（清掃の画面で決めたもの）。その月にチェックアウトする予約の分だけ
+    const cal = stayCalendar(results, month, today, list ?? roomsOf(inn));
+    const [cl, asg] = await Promise.all([
+      env.DB.prepare("SELECT id, name, active FROM cleaners").all(),
+      env.DB.prepare(
+        `SELECT a.reservation_id, a.date, a.room, a.cleaner_id FROM cleaning_assignments a
+         JOIN reservations r ON r.id = a.reservation_id
+         WHERE r.status = 'confirmed' AND r.checkout_date BETWEEN ? AND ?`,
+      )
+        .bind(cal.from, cal.to)
+        .all(),
+    ]);
+    const people = (cl.results ?? []).map((c) => ({ id: c.id, name: c.name, active: c.active === 1 }));
+    return json({ ...markCleaners(cal, asg.results ?? [], people), room_list: list ?? [], window: cleaningWindow(inn) });
   }
   if (p === "/api/reservations") {
     // これからの予約（今日より後に出発する・取り消していない）。名前は読まない
