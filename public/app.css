@@ -620,6 +620,14 @@ body.drill::after {
 .dx-title { margin-top: var(--s2); margin-bottom: 0; line-height: 1.6; word-break: auto-phrase; text-wrap: pretty; }
 .dx-last { font-size: 16px; color: var(--ink-sub); margin-top: var(--s2); }
 .dx-done { display: grid; gap: var(--s2); font-size: 16px; line-height: 1.6; }
+/* 値付けの知らせ・値付けの目安：出典のURLなど長い文字が、はみ出さないように */
+.dx-price, .price-kv { grid-template-columns: max-content minmax(0, 1fr); line-height: 1.7; }
+.dx-price dd, .price-kv dd { min-width: 0; overflow-wrap: anywhere; word-break: auto-phrase; text-wrap: pretty; }
+.price-sub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s5, 24px); }
+@media (max-width: 560px) {
+  .dx-price, .price-kv { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+  .dx-price dt, .price-kv dt { margin-top: var(--s2); font-size: 15px; }
+}
 .row-decisions .ico { background: var(--action); color: #fff; }
 @media (max-width: 560px) {
   .drill-btn { margin-left: 0; margin-top: var(--s2); width: 100%; }

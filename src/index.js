@@ -48,6 +48,7 @@
 // - GET  /api/decisions                  決裁箱：まだ決めていないもの（急ぐ順）・さっき決めたもの・最後の見回り
 // - POST /api/patrol                     いま見回る（ボタン）
 // - POST /api/decisions/:id/ok           オーナーの OK（予約メールは台帳に入れる・案内は確認済みにする・ほかは「見た」）
+// - POST /api/decisions/:id/review       値付けの知らせに「見直した／このまま」を記録 {choice:"reviewed"|"kept"}（予約も帳簿も変えない）
 // - 定期ジョブ（scheduled）              毎朝7時（日本時間）に見回る
 // - メール受け取り（email）              決めた相手からの予約メールだけ読んで確認待ちに置き、見回る
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
@@ -85,7 +86,8 @@ import {
   OWNER_CHECK,
 } from "./lib/arrival.js";
 import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
-import { DecisionError, decideOk, listDecisions, runPatrol } from "./lib/patrol.js";
+import { DecisionError, decideOk, decideReview, listDecisions, runPatrol } from "./lib/patrol.js";
+import { guidePrice, monthTakeHome, pacePlan, rateList, reviewCompare } from "./lib/pricing.js";
 import { MAX_RAW_BYTES, bytesToBinary, messageKeyOf, parseRawEmail, senderAllowed } from "./lib/mail-in.js";
 import { evalResults, teamRuns } from "./lib/eval.js";
 import { expiresAtFor, GuestError, guestCountDiscrepancy, GUEST_LANGS, linkProblem, validateProfile } from "./lib/guest.js";
@@ -203,13 +205,28 @@ async function handleGet(url, env, today) {
     const month = url.searchParams.get("month") ?? monthOf(today);
     if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "month は YYYY-MM で指定してください");
     const inn = await loadInn(env);
-    const [res, lines, open] = await Promise.all([
-      env.DB.prepare(`SELECT ${RES_COLUMNS}, amount_gross, ota_reservation_no FROM reservations ORDER BY checkin_date, id`).all(),
+    const rules = rulesFromInnProfile(inn);
+    const [res, lines, open, nights, reviews] = await Promise.all([
+      env.DB.prepare(`SELECT ${RES_COLUMNS}, room, amount_gross, ota_reservation_no FROM reservations ORDER BY checkin_date, id`).all(),
       env.DB.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
       env.DB.prepare("SELECT COUNT(*) AS n FROM discrepancies WHERE status = 'open'").first(),
+      env.DB.prepare("SELECT night, fiscal_year FROM stay_nights").all(),
+      env.DB.prepare("SELECT kind, room, nights_json, before_json, free_room_nights, choice FROM price_reviews ORDER BY id").all(),
     ]);
-    const view = kpiView({ reservations: res.results, lines: lines.results, rooms: Number(inn.rooms), month, today, rules: rulesFromInnProfile(inn) });
-    return json({ ...view, open_discrepancies: open?.n ?? 0, statements_loaded: lines.results.length > 0 });
+    const rooms = Number(inn.rooms);
+    const view = kpiView({ reservations: res.results, lines: lines.results, rooms, month, today, rules });
+    // 値付けの目安（経営企画）：AIは使わない。今の数字は変えずに、横に足すだけ
+    const cleaningFee = inn.cleaning_fee == null ? null : Number(inn.cleaning_fee);
+    const pricing = {
+      cleaning_fee: cleaningFee,
+      min_price: inn.min_price == null ? null : Number(inn.min_price),
+      guide: guidePrice(res.results, today),
+      rates: rateList(lines.results),
+      take_home: monthTakeHome(view, res.results, cleaningFee),
+      pace: pacePlan(dayCounter(nights.results, today, rules), today),
+      reviews: reviewCompare(reviews.results, res.results, lines.results, cleaningFee, rooms),
+    };
+    return json({ ...view, open_discrepancies: open?.n ?? 0, statements_loaded: lines.results.length > 0, pricing });
   }
   if (p === "/api/tax") {
     const month = url.searchParams.get("month") ?? monthOf(today);
@@ -701,10 +718,21 @@ async function patrol(env, trigger) {
 
 // 決裁箱（M20）：書く
 async function handleDecisionPost(request, url, env, ctx) {
-  await readJsonBody(request, url);
+  const body = await readJsonBody(request, url);
   if (url.pathname === "/api/patrol") {
     const run = await patrol(env, "button");
     return json({ patrol: run, ...(await listDecisions(env.DB)) });
+  }
+  const rv = url.pathname.match(/^\/api\/decisions\/(\d+)\/review$/);
+  if (rv) {
+    try {
+      const inn = await loadInn(env);
+      const decided = await decideReview({ db: env.DB, id: Number(rv[1]), choice: body.choice, rooms: Number(inn.rooms) });
+      return json({ decided, ...(await listDecisions(env.DB)) });
+    } catch (e) {
+      if (e instanceof DecisionError) throw new HttpError(e.status, e.message);
+      throw e;
+    }
   }
   const m = url.pathname.match(/^\/api\/decisions\/(\d+)\/ok$/);
   if (!m) return null;

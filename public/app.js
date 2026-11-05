@@ -236,7 +236,7 @@ function renderTeamLog() {
           ]);
         }),
       )
-    : el("p", { cls: "state", text: a.agent === "keiei" ? "経営企画は、まだ仕事をしていません（月のふりかえりで働く予定です）" : "まだ仕事の記録がありません" });
+    : el("p", { cls: "state", text: a.agent === "keiei" ? "経営企画は、AIを使わずに働いています（値付けの目安・180日のペースはプログラムが計算して、今月の数字と決裁箱に出します）" : "まだ仕事の記録がありません" });
   box.replaceChildren(
     el("div", { cls: "team-log-head" }, [el("h2", { cls: "card-title", text: `${name}の最近の仕事` }), close]),
     list,
@@ -291,10 +291,10 @@ async function showKpi() {
   try {
     const d = await api(`/api/kpis?month=${encodeURIComponent(state.kpiMonth)}`);
     if (d.total === 0 && d.room_nights === 0) {
-      p.replaceChildren(...head, kpiEmpty(d));
+      p.replaceChildren(...head, kpiEmpty(d), ...kpiPricing(d));
       return;
     }
-    p.replaceChildren(...head, kpiHeroCard(d), kpiKeepCard(d), kpiOtaCard(d), kpiFactsCard(d), ...kpiLinks(d), kpiCountryCard(d));
+    p.replaceChildren(...head, kpiHeroCard(d), kpiKeepCard(d), kpiOtaCard(d), kpiFactsCard(d), ...kpiLinks(d), kpiCountryCard(d), ...kpiPricing(d));
   } catch (err) {
     p.replaceChildren(...head, errorBox(err, showKpi));
   }
@@ -396,6 +396,85 @@ function kpiKeepCard(d) {
     el("dl", { cls: "receipt" }, rows),
     ...notes,
   ]);
+}
+
+// ---- 値付けの目安（経営企画）----
+// AIは使わない。数字と文はプログラムが決まった形で作る。値段を決めて予約サイトに入れるのはオーナー
+
+function kpiPricing(d) {
+  const pr = d.pricing;
+  if (!pr) return [];
+  return [kpiPriceCard(d, pr), kpiReviewCard(pr.reviews)];
+}
+
+function kpiPriceCard(d, pr) {
+  const row = (label, value, cls = null) => el("div", { cls }, [el("dt", { text: label }), el("dd", { text: value })]);
+  const t = pr.take_home;
+  const body = [];
+  if (t?.available) {
+    body.push(
+      el("dl", { cls: "receipt" }, [
+        row(`売上（${t.stays}件・${t.nights}泊）`, `${yen(t.sales)}円`),
+        row("予約サイトの手数料", `−${yen(t.fee)}円`, "minus"),
+        row(`清掃費（1回${yen(pr.cleaning_fee)}円）`, `−${yen(t.cleaning)}円`, "minus"),
+        el("div", { cls: "total keep-total" }, [el("dt", { text: "1泊あたりの手取り" }), el("dd", {}, [yen(t.per_night), el("span", { cls: "unit", text: "円" })])]),
+      ]),
+    );
+    const notes = ["清掃費は1回の予約に1回。月をまたぐ予約は、この月の泊数の分だけ数えています。"];
+    if (t.estimate) notes.push("これから泊まる分や、明細がまだ無い分の手数料の見込みが入っています。");
+    body.push(el("p", { cls: "sub", text: notes.join("") }));
+    if (t.excluded > 0) body.push(el("p", { cls: "notice warn", text: `手数料が分からない予約が ${t.excluded}件 あるので、この計算から外しています` }));
+  } else {
+    body.push(el("p", { cls: "state", text: t?.reason ?? "まだ計算できません" }));
+  }
+
+  const pace = pr.pace;
+  if (pace) {
+    body.push(
+      el("h3", { cls: "card-title price-sub" }, ["180日のペース", el("span", { cls: `pill ${pace.policy === "keep" ? "warn" : "ok"}`, text: pace.policy_label })]),
+      el("dl", { cls: "kv price-kv" }, [
+        el("dt", { text: "泊まった日" }),
+        el("dd", { text: `${pace.used_days}日（予約済みを入れると${pace.total_days}日）／上限${pace.limit}日` }),
+        el("dt", { text: "今のペース" }),
+        el("dd", { text: pace.reach_text }),
+        el("dt", { text: "方針" }),
+        el("dd", { text: pace.policy_text }),
+      ]),
+    );
+  }
+
+  const set = [
+    `清掃費 1回${pr.cleaning_fee == null ? "（未設定）" : `${yen(pr.cleaning_fee)}円`}`,
+    `最低価格 1泊${pr.min_price == null ? "（未設定）" : `${yen(pr.min_price)}円`}`,
+  ];
+  if (pr.guide) set.push(`これまでの1泊の平均 約${yen(pr.guide.price)}円`);
+  body.push(
+    el("p", { cls: "sub", text: `宿の設定：${set.join("・")}。上げどきの夜や、1泊だけ空いた夜は、決裁箱でお知らせします。値段を決めて予約サイトに入れるのはオーナーです（番頭は予約も帳簿も変えません。AIは使わず、プログラムが計算しています）` }),
+    el("div", { cls: "btns" }, [btn("決裁箱を見る", () => go("decisions"), "btn small")]),
+  );
+  return el("article", { cls: "card" }, [
+    el("h2", { cls: "card-title" }, ["値付けの目安（経営企画）", t?.available && t.estimate ? el("span", { cls: "tag-est", text: "見込み" }) : null]),
+    ...body,
+  ]);
+}
+
+// 「見直した／このまま」の記録を比べる。記録がなければ、つくらずにそう言う
+function kpiReviewCard(rv) {
+  const head = el("h2", { cls: "card-title", text: "見直した日と、そのままの日" });
+  if (!rv || rv.empty) {
+    return el("article", { cls: "card" }, [
+      head,
+      el("p", { cls: "state", text: rv?.note ?? "記録がたまると比べられます" }),
+      el("p", { cls: "sub", text: "決裁箱の値付けの知らせで「見直した」「このまま」を押すと、ここに記録がたまります" }),
+    ]);
+  }
+  const cell = (g) => [
+    el("dt", { text: `${g.label}（知らせ${g.cards}件）` }),
+    el("dd", {
+      text: `空いていた部屋×夜 ${g.free_room_nights} → その後に埋まった ${g.filled_room_nights}。1泊あたりの手取り ${g.take_home_per_night == null ? "—" : `約${yen(g.take_home_per_night)}円`}${g.unknown_fee ? `（手数料が分からない予約${g.unknown_fee}件は外しています）` : ""}`,
+    }),
+  ];
+  return el("article", { cls: "card" }, [head, el("dl", { cls: "kv price-kv" }, rv.groups.flatMap(cell)), el("p", { cls: "sub", text: rv.note })]);
 }
 
 // 部屋が埋まった割合・1部屋1泊の平均
@@ -2447,6 +2526,7 @@ function renderDecisions(d, note = null) {
 function decisionCard(d) {
   const [lv, cls] = LEVEL[d.level] ?? LEVEL.info;
   const msg = el("div", { attrs: { "aria-live": "polite" } });
+  if (d.review) return priceCard(d, lv, cls, msg);
   const ok = btn(OK_LABEL[d.kind] ?? "OK（見ました）", () => decide(d, msg), "btn");
   if (!d.can_ok) {
     ok.disabled = true;
@@ -2461,6 +2541,37 @@ function decisionCard(d) {
     el("div", { cls: "btns" }, [ok, d.link in SHOW ? btn(fixLabel, () => openFrom(d), "btn") : null]),
     msg,
   ]);
+}
+
+// 値付けの知らせ：OK の代わりに「見直した／このまま」。押したことを記録するだけで、予約も帳簿も変えない
+function priceCard(d, lv, cls, msg) {
+  return el("article", { cls: `card dx dx-${d.level}` }, [
+    el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv }), el("span", { cls: "pill", text: "値付け" })]),
+    el("h3", { cls: "card-title dx-title", text: d.title }),
+    el("dl", { cls: "kv dx-price" }, d.facts.flatMap((f) => [el("dt", { text: f.label }), el("dd", { text: f.value })])),
+    el("p", { cls: "sub", text: "予約サイトで値段や条件を見直したら「見直した」、そのままにするなら「このまま」を押してください。押したことを記録して、あとで今月の数字で比べます" }),
+    el("div", { cls: "btns" }, [
+      btn("見直した", () => decideReview(d, "reviewed", msg), "btn primary"),
+      btn("このまま", () => decideReview(d, "kept", msg), "btn"),
+      btn("今月の数字を見る", () => openFrom(d), "btn"),
+    ]),
+    msg,
+  ]);
+}
+
+async function decideReview(d, choice, msg) {
+  lockDecisions(true);
+  msg.replaceChildren(loading("記録しています"));
+  try {
+    const r = await api(`/api/decisions/${d.id}/review`, { method: "POST", body: { choice } });
+    state.loaded = {};
+    toast(choice === "reviewed" ? "「見直した」と記録しました" : "「このまま」と記録しました");
+    dx.busy = false;
+    renderDecisions(r);
+  } catch (err) {
+    lockDecisions(false);
+    msg.replaceChildren(el("p", { cls: "notice danger", text: errorText(err) }));
+  }
 }
 
 function decidedCard(done) {

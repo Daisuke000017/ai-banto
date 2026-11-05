@@ -28,6 +28,9 @@ export const innProfile = {
   // 清掃できる時間（M18）：チェックアウト〜チェックイン
   cleaning_checkout_time: "10:00",
   cleaning_checkin_time: "15:00",
+  // 値付けの助言（経営企画）：清掃費1回いくら・最低価格（これ以下では売らない）。架空の値
+  cleaning_fee: 5000,
+  min_price: 9000,
 };
 
 const g = (n) => `架空ゲスト${n}`;

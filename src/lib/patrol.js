@@ -8,6 +8,7 @@
 
 import { addDays, daysBetween, monthOf } from "./dates.js";
 import { minpakuReport, reportPeriodOf } from "./counting.js";
+import { pricingItems, reviewSnapshot } from "./pricing.js";
 
 export const ARRIVAL_DAYS_AHEAD = 3; // 何日先のチェックインまで、到着前案内を用意するか
 export const MAX_AI_DRAFTS = 2; // 1回の見回りでAIに書かせる案内の数（使いすぎないため）
@@ -48,6 +49,7 @@ export function nearestReportPeriod(today) {
  * @param {object} s.counter dayCounter の結果
  * @param {Array} s.reports minpakuReport の結果（締切の近い順でなくてよい）
  * @param {number} s.openDiscrepancies まだ決めていない「ずれ」の数
+ * @param {object} [s.pricing] 値付けの助言（pricing.js の pricingItems に渡すもの）。無ければ出さない
  */
 export function buildPatrolItems(s) {
   const items = [];
@@ -176,12 +178,24 @@ export function buildPatrolItems(s) {
     });
   }
 
+  // 値付けの助言（経営企画）：AIは使わない。文はプログラムが決まった形で作る
+  if (s.pricing) items.push(...pricingItems(s.pricing));
+
   return items;
 }
 
 // ---------------------------------------------------------------------------
 // DB を使う部分
 // ---------------------------------------------------------------------------
+
+/** 値付けの助言に使う予約（名前は読まない） */
+const PRICE_RES_SQL = `SELECT id, ota, room, checkin_date, checkout_date, status, amount_gross, ota_reservation_no,
+  tax_collection, lodging_tax_collected, cancel_fee_amount FROM reservations ORDER BY checkin_date, id`;
+
+/** 決裁箱に残す中身。値付けの知らせは、どの夜の話か（review）も残す */
+function bodyOf(it) {
+  return { facts: it.facts, can_ok: it.can_ok, ...(it.review ? { review: it.review } : {}) };
+}
 
 /** 何日か先にチェックインで、到着前案内がまだ1つもない予約（名前は読まない） */
 const NEEDS_DRAFT_SQL = `SELECT r.id, r.ota, r.checkin_date, r.checkout_date, r.adults, r.children, r.infants, r.cosleep_free,
@@ -264,6 +278,11 @@ export async function runPatrol({ db, trigger, today, now, inn, rules, client, l
       lodging_tax_collected, nationalities_json, status, cancel_fee_amount, guest_changes_json FROM reservations ORDER BY checkin_date, id`).all(),
     db.prepare("SELECT COUNT(*) AS n FROM discrepancies WHERE status = 'open'").first(),
   ]);
+  const [priceRes, priceLines] = await Promise.all([
+    db.prepare(PRICE_RES_SQL).all(),
+    db.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
+  ]);
+  const counter = lib.dayCounter(nights.results ?? [], today, rules);
   const items = buildPatrolItems({
     today,
     emails,
@@ -277,9 +296,10 @@ export async function runPatrol({ db, trigger, today, now, inn, rules, client, l
       needs_owner_check: String(d.draft_template).includes(lib.OWNER_CHECK),
     })),
     cleaning: lib.cleaningDays(resRows.results ?? [], today, inn),
-    counter: lib.dayCounter(nights.results ?? [], today, rules),
+    counter,
     reports: nearestReportPeriod(today).map((p) => minpakuReport(reportRows.results ?? [], p, today)),
     openDiscrepancies: open?.n ?? 0,
+    pricing: { today, inn, reservations: priceRes.results ?? [], lines: priceLines.results ?? [], counter },
   });
 
   // ③ 決裁箱に入れる（同じものは入れ直さず、まだ決めていなければ事実だけ新しくする）
@@ -287,7 +307,7 @@ export async function runPatrol({ db, trigger, today, now, inn, rules, client, l
   if (items.length) {
     await db.batch(
       items.map((it) =>
-        db.prepare(UPSERT_SQL).bind(it.ref_key, it.kind, it.level, it.title, JSON.stringify({ facts: it.facts, can_ok: it.can_ok }),
+        db.prepare(UPSERT_SQL).bind(it.ref_key, it.kind, it.level, it.title, JSON.stringify(bodyOf(it)),
           it.target_id, it.link, runId),
       ),
     );
@@ -325,6 +345,7 @@ function decisionView(row) {
     title: row.title,
     facts: Array.isArray(body.facts) ? body.facts : [],
     can_ok: body.can_ok !== false,
+    review: body.review ?? null, // 値付けの知らせだけ：「見直した／このまま」で決める
     link: row.link,
     status: row.status,
     created_at: row.created_at,
@@ -391,5 +412,40 @@ export async function decideOk({ db, id, now, lib }) {
     }
   }
   await db.prepare("UPDATE decisions SET status = 'ok', decided_at = datetime('now') WHERE id = ? AND status = 'open'").bind(id).run();
+  return decisionView(await db.prepare("SELECT * FROM decisions WHERE id = ?").bind(id).first());
+}
+
+export const REVIEW_CHOICES = Object.freeze(["reviewed", "kept"]);
+
+/**
+ * 値付けの知らせに「見直した／このまま」を記録する。
+ * 予約も帳簿も変えない。押したときにもう入っていた予約を残し、あとで比べる。
+ * @param {object} p
+ * @param {string} p.choice "reviewed"（見直した）か "kept"（このまま）
+ * @param {number} p.rooms 部屋の数
+ */
+export async function decideReview({ db, id, choice, rooms }) {
+  if (!REVIEW_CHOICES.includes(choice)) throw new DecisionError(400, "「見直した」か「このまま」を選んでください");
+  const row = await db.prepare("SELECT * FROM decisions WHERE id = ?").bind(id).first();
+  if (!row) throw new DecisionError(404, "決裁箱に見つかりません");
+  if (row.kind !== "price_event" && row.kind !== "price_gap") throw new DecisionError(400, "これは値付けの知らせではありません");
+  if (row.status !== "open") throw new DecisionError(409, "これはもう決めてあります");
+  const view = decisionView(row);
+  if (!view.review || !Array.isArray(view.review.nights) || !view.review.nights.length) {
+    throw new DecisionError(409, "どの夜の知らせか分かりません。もう一度見回ってください");
+  }
+  const { results } = await db.prepare(PRICE_RES_SQL).all();
+  const snap = reviewSnapshot(results ?? [], view.review, rooms);
+  const done = await db.batch([
+    db.prepare("UPDATE decisions SET status = 'ok', decided_at = datetime('now') WHERE id = ? AND status = 'open'").bind(id),
+    db
+      .prepare(
+        `INSERT INTO price_reviews (decision_id, ref_key, kind, room, nights_json, before_json, free_room_nights, choice)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
+      )
+      .bind(id, row.ref_key, row.kind, view.review.room ?? null, JSON.stringify(view.review.nights), JSON.stringify(snap.before_ids),
+        snap.free_room_nights, choice),
+  ]);
+  if (!done[0]?.meta?.changes) throw new DecisionError(409, "これはもう決めてあります");
   return decisionView(await db.prepare("SELECT * FROM decisions WHERE id = ?").bind(id).first());
 }

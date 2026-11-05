@@ -60,8 +60,19 @@ export function feeRates(lines) {
   return out;
 }
 
+/** 明細の行を「予約サイト|予約番号」ごとにまとめる（feeOf に渡す） */
+export function linesIndex(lines) {
+  const m = new Map();
+  for (const l of lines) {
+    const k = `${l.ota}|${l.ota_reservation_no}`;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(l);
+  }
+  return m;
+}
+
 /** 1件の予約の手数料：{amount, basis: "actual"|"estimate"|"none"|"unknown"} */
-function feeOf(r, linesByKey, rates) {
+export function feeOf(r, linesByKey, rates) {
   if (r.ota === "direct") return { amount: 0, basis: "none" };
   const ls = linesByKey.get(`${r.ota}|${r.ota_reservation_no}`) ?? [];
   const withFee = ls.filter((l) => l.fee != null);

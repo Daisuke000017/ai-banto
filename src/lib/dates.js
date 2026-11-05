@@ -48,6 +48,15 @@ const JP_HOLIDAYS = new Set([
   "2027-09-20", "2027-09-23", "2027-10-11", "2027-11-03", "2027-11-23",
 ]);
 
+/** 祝日の表にある年（この外の年は、休みかどうかを言わない） */
+export const HOLIDAY_YEARS = [2026, 2027];
+
+/** 国民の祝日（振替休日・国民の休日を含む）か。値付けの助言（連休を探す）で使う */
+export function isHoliday(s) {
+  parseDate(s);
+  return JP_HOLIDAYS.has(s);
+}
+
 /** その日のバスの時刻の種類：weekday＝平日／sat＝土曜／sun_holiday＝日曜・祝日（土曜の祝日も祝日にする） */
 export function dayKind(s) {
   const dow = parseDate(s).getUTCDay();
