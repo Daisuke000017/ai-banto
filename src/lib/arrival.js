@@ -42,7 +42,7 @@ const yen = (n) => Number(n).toLocaleString("en-US");
 // ---- プログラムが書く文（言語ごと） ----
 const TEXT = {
   ja: {
-    header: (a, b, n, g) => `ご到着前のご案内｜${a}〜${b}（${n}泊）・${g}名様`,
+    header: (a, b, n, g) => `ご到着前のご案内\n${a}〜${b}（${n}泊）・${g}名様`,
     taxIntro: "宿泊税：宮崎市の条例に基づく税",
     taxCollect: (rate, p, n, total) => `宿泊税：宮崎市の条例に基づく税で、当施設がお預かりして市に納めます。1人1泊${rate}円 × ${p}人 × ${n}泊 ＝ ${yen(total)}円`,
     taxCollectTotal: (rate, total) => `宿泊税：宮崎市の条例に基づく税で、当施設がお預かりして市に納めます。合計 ${yen(total)}円（1人1泊${rate}円・泊ごとの人数で計算）`,

@@ -45,8 +45,11 @@ body {
   font-size: 18px;
   line-height: 1.8;
   font-variant-numeric: tabular-nums;
+  /* 日本語は言葉のかたまりで折り、行末に1文字だけ残さない（入りきらないときだけ途中で折る） */
+  word-break: auto-phrase; overflow-wrap: break-word; text-wrap: pretty;
 }
 h1, h2, h3, p, ul, ol, dl, dd { margin: 0; }
+.nw { white-space: nowrap; }
 ul { padding: 0; list-style: none; }
 button, select, textarea, input { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
@@ -256,6 +259,12 @@ main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 /* 単位は数字の半分。ただし 15px より小さくしない（DESIGN.md） */
 .num dd small { font-size: max(0.5em, 15px); font-weight: 700; margin-left: 2px; }
 .num-sub { font-size: 15px; color: var(--ink-sub); margin-top: var(--s1); line-height: 1.6; }
+/* 宿泊税：主の数字（納める額）だけ 40px。ほかの3つは下に小さく（22px）並べる */
+.tax-hero { margin-top: var(--s4); }
+.nums-sm { grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: var(--s2); margin-top: var(--s3); }
+.nums-sm .num { padding: var(--s2) var(--s3); }
+.nums-sm .num dt { font-size: 15px; }
+.nums-sm .num dd { font-size: 22px; }
 .num.is-ok { background: var(--ok-bg); }
 .num.is-ok dd { color: var(--ok); }
 .num.is-warn { background: var(--warn-bg); }
@@ -543,6 +552,18 @@ textarea {
   .c-ota { display: none; }
   td .sub-ota { display: block; }
   th, td { padding: var(--s2) var(--s1); }
+  /* 宿泊税の内訳：表をやめ、1予約＝1かたまり（予約番号と予約サイトの行＋4つの数字を2列×2段） */
+  .tax-table, .tax-table tbody { display: block; }
+  .tax-table thead { display: none; }
+  .tax-table tbody tr:not(.note-row) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1) var(--s3); padding: var(--s3) 0; }
+  .tax-table tbody tr.note-row { display: block; }
+  .tax-table td { padding: 0; }
+  .tax-table td:first-child { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 var(--s2); align-items: baseline; font-weight: 700; }
+  .tax-table td:first-child .sub-ota { display: inline; font-weight: 400; }
+  .tax-table td.n { text-align: left; white-space: normal; }
+  .tax-table .cell-label { display: block; font-size: 15px; color: var(--ink-sub); }
+  .tax-table .cell-num { font-size: 18px; font-weight: 700; }
+  .tax-table td.note { display: block; padding: 0 0 var(--s3); }
   /* 分野ごとの正解：横にずらさず読めるよう、1分野＝1かたまり（分野名の行＋3つの数字の行）に組み替える */
   .eval-domains, .eval-domains tbody { display: block; }
   .eval-domains thead { display: none; }
@@ -590,7 +611,8 @@ textarea.note-in { min-height: 64px; }
 .plain-list { margin: 0; padding-left: 1.2em; }
 
 /* 訓練（O-5）：いつも上の帯にあるボタン。訓練中は画面のふちを赤く囲み、帯に「訓練中」を出す */
-.drill-btn { margin-left: var(--s2); border-color: var(--danger); color: var(--danger); background: var(--surface); }
+/* 押す前は控えめな灰色の小さなボタン（主の行動＝OK・コピーより目立たせない）。押すと赤 */
+.drill-btn { margin-left: auto; min-height: 44px; padding: var(--s1) var(--s3); font-size: 15px; font-weight: 500; border-color: var(--line); color: var(--ink-sub); background: var(--surface); }
 .drill-btn[aria-pressed="true"] { background: var(--danger); color: #fff; }
 .drill-banner {
   margin-top: var(--s3);
@@ -630,7 +652,7 @@ body.drill::after {
 }
 .row-decisions .ico { background: var(--action); color: #fff; }
 @media (max-width: 560px) {
-  .drill-btn { margin-left: 0; margin-top: var(--s2); width: 100%; }
+  .drill-btn { margin-left: 0; margin-top: var(--s2); }
 }
 
 /* 宿泊カレンダー（M21）：7列の表。横にはみ出さない。部屋は色だけでなく「A」「B」の文字で出す */
@@ -691,15 +713,15 @@ body.drill::after {
 .cal-views { display: flex; gap: var(--s2); margin: 0 0 var(--s3); }
 .cal-views .btn[aria-pressed="true"] { background: var(--action); border-color: var(--action); color: #fff; }
 
-/* 見かたの説明の見本 */
-.sw { display: inline-block; flex: none; width: 32px; height: 14px; border-radius: 4px; background: var(--chart-1); }
-.sw.bar { border-radius: 8px 3px 3px 8px; }
-.sw.unknown { background: var(--warn-bg); outline: 2px solid var(--warn); outline-offset: -2px; }
-.sw.over { background: var(--danger-bg); outline: 2px solid var(--danger); outline-offset: -2px; }
-.sw.clean { width: 14px; background: transparent; border: 2px solid var(--ink-sub); border-radius: 3px; }
-.sw.clean.turn { width: 16px; height: 16px; border: 3px solid var(--glow); border-radius: 4px; background: var(--glow-bg); }
-.sw.lane { height: 6px; border-radius: 3px; }
-.sw.lane.b { background: var(--chart-2); }
+/* 見かたの説明の見本。カレンダーの中だけ横長にする（今月の数字の 14px 角の札に効かせない） */
+.cal-legend .sw { display: inline-block; flex: none; width: 32px; height: 14px; border-radius: 4px; background: var(--chart-1); }
+.cal-legend .sw.bar { border-radius: 8px 3px 3px 8px; }
+.cal-legend .sw.unknown { background: var(--warn-bg); outline: 2px solid var(--warn); outline-offset: -2px; }
+.cal-legend .sw.over { background: var(--danger-bg); outline: 2px solid var(--danger); outline-offset: -2px; }
+.cal-legend .sw.clean { width: 14px; background: transparent; border: 2px solid var(--ink-sub); border-radius: 3px; }
+.cal-legend .sw.clean.turn { width: 16px; height: 16px; border: 3px solid var(--glow); border-radius: 4px; background: var(--glow-bg); }
+.cal-legend .sw.lane { height: 6px; border-radius: 3px; }
+.cal-legend .sw.lane.b { background: var(--chart-2); }
 
 /* 帯で見る：ラベル1列＋1日を午前・午後の2列。位置はプログラムが gridColumn で入れる（CSSOM。style="" の文字は書かない） */
 /* 1日の幅：スマホ・タブレットは40px（横にずらす）、広い画面は26px以上で1か月がほぼ入る */

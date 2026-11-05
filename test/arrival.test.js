@@ -209,7 +209,7 @@ test("AIの鍵がないときは決まった文（止まらない）", async () 
   assert.equal(out.fallback_reason, "no_key");
   assert.ok(out.draft_template.startsWith("Before your arrival | Nov 3 – Nov 5 (2 nights), 2 guests"));
   assert.ok(out.draft_template.includes("call 119"));
-  assert.ok(out.ja_text.startsWith("ご到着前のご案内｜11月3日〜11月5日（2泊）・2名様"));
+  assert.ok(out.ja_text.startsWith("ご到着前のご案内\n11月3日〜11月5日（2泊）・2名様"));
 });
 
 test("決まった文：宿の設定に自分の文があれば使う", () => {

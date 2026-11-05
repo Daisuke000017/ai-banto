@@ -634,9 +634,13 @@ function taxCard(d) {
       ]),
       taxMonthPicker(d.rules),
     ]),
-    el("dl", { cls: "nums" }, [
+    // 主の数字は「宿泊税」1つだけ大きく。ほかの3つは下に小さく並べる
+    el("div", { cls: "tax-hero" }, [
+      el("p", { cls: "hero-label", text: "納める宿泊税" }),
+      el("p", { cls: "hero" }, [yen(d.tax_amount), el("span", { cls: "unit", text: "円" })]),
+    ]),
+    el("dl", { cls: "nums nums-sm" }, [
       num("人泊", d.person_nights, "人泊"),
-      num("宿泊税", yen(d.tax_amount), "円"),
       num("預かった額", yen(d.collected_amount), "円"),
       num(d.diff < 0 ? "足りない" : "差", yen(Math.abs(d.diff)), "円", diffCls, diffSub),
     ]),
@@ -658,6 +662,8 @@ function taxCard(d) {
 }
 
 function taxBreakdown(d) {
+  const cell = (label, value) =>
+    el("td", { cls: "n" }, [el("span", { cls: "cell-label", attrs: { "aria-hidden": "true" }, text: label }), el("span", { cls: "cell-num", text: value })]);
   const tbody = el("tbody");
   for (const b of d.breakdown) {
     tbody.append(
@@ -665,10 +671,11 @@ function taxBreakdown(d) {
         // スマホ幅では「予約サイト」の列を隠し、予約番号の下に小さく出す（金額の2列を画面に収めるため）
         el("td", {}, [el("span", { text: b.reservation_id }), el("span", { cls: "sub-ota", text: OTA[b.ota] ?? b.ota })]),
         el("td", { cls: "c-ota", text: OTA[b.ota] ?? b.ota }),
-        el("td", { cls: "n", text: `${b.nights_in_month}泊` }),
-        el("td", { cls: "n", text: b.person_nights }),
-        el("td", { cls: "n", text: `${yen(b.tax)}円` }),
-        el("td", { cls: "n", text: b.collected == null ? "分からない" : `${yen(b.collected)}円` }),
+        // スマホ幅では表をやめ、予約ごとに「見出し＋数字」の縦並びにする（横にずらさず読めるように）
+        cell("泊数", `${b.nights_in_month}泊`),
+        cell("人泊", `${b.person_nights}人泊`),
+        cell("宿泊税", `${yen(b.tax)}円`),
+        cell("預かった額", b.collected == null ? "分からない" : `${yen(b.collected)}円`),
       ]),
     );
     // メモは狭い「予約」の欄に入れず、その行の下に表の幅いっぱいで出す（スマホで1文字ずつ縦に並ばないように）
@@ -679,7 +686,7 @@ function taxBreakdown(d) {
     el("h2", { text: "内訳（予約ごと）" }),
     el("p", { cls: "lead", text: d.breakdown.length ? "月をまたぐ予約は、この月の夜だけを数えています" : "" }),
     d.breakdown.length
-      ? el("div", { cls: "table-wrap" }, [el("table", {}, [el("thead", {}, [head]), tbody])])
+      ? el("div", { cls: "table-wrap" }, [el("table", { cls: "tax-table" }, [el("thead", {}, [head]), tbody])])
       : el("p", { cls: "state", text: "この月の予約はまだありません。別の月を選んでください" }),
   ]);
 }
@@ -701,8 +708,8 @@ function counterCard(c) {
   const lvl = c.level === "over" ? "over" : c.level === "warn" ? "warn" : "";
   const remCls = c.level === "over" ? "is-danger" : c.level === "warn" ? "is-warn" : "is-ok";
   const card = el("article", { cls: "card" }, [
-    el("h2", { text: `${c.fiscal_year}年度の営業日数（上限 ${c.limit}日）` }),
-    el("p", { cls: "lead", text: `${jpDate(c.period.from, false)}正午から1年。使った日・予約済みの日・残りを数えています` }),
+    el("h2", { text: `${c.fiscal_year}年度の営業日数` }),
+    el("p", { cls: "lead", text: `上限は1年に${c.limit}日。${jpDate(c.period.from, false)}正午から1年。使った日・予約済みの日・残りを数えています` }),
     el("dl", { cls: "nums" }, [
       num("使った日", c.used_days, "日"),
       num("予約済みの日", c.booked_days, "日"),
@@ -744,7 +751,8 @@ function reportCard(r) {
   const card = el("article", { cls: "card" }, [
     el("div", { cls: "card-head" }, [
       el("div", {}, [
-        el("h2", { text: `定期報告の集計表（${jpPeriod(r.period)}）` }),
+        // 見出しにかっこを入れない（スマホで「（2026年8月・／9月）」と割れるため）
+        el("h2", { text: `${jpPeriod(r.period)}の定期報告` }),
         el("p", { cls: "lead" }, [
           `報告の期限：${jpDate(r.due_date)} `,
           left == null ? null : el("span", { cls: `pill ${dueCls}`, text: left < 0 ? `${-left}日 過ぎています` : left === 0 ? "今日まで" : `あと${left}日` }),
@@ -1258,8 +1266,8 @@ function resRow(r) {
     el("div", { cls: "res-main" }, [
       el("p", { cls: "res-date" }, [
         el("span", { text: `${jpDate(r.checkin_date)} →` }), " ",
-        el("span", { text: jpDate(r.checkout_date) }),
-        el("span", { text: `（${n}泊）` }),
+        // 「（3泊）」だけが次の行に落ちないよう、終わりの日と1つのかたまりにする
+        el("span", { text: `${jpDate(r.checkout_date)}（${n}泊）` }),
       ]),
       el("p", { cls: "res-sub", text: `${r.guests}人・${LANG[r.language] ?? r.language}・${OTA[r.ota] ?? r.ota}` }),
     ]),
@@ -2513,21 +2521,24 @@ function renderDecisions(d, note = null) {
     ]),
     el("p", { cls: "lead", text: "チームが自分から見回って、確認してほしいものだけをここに置きます。OKするまで、台帳も案内も変わりません" }),
     el("p", { cls: "dx-last", text: patrolText(d.last_patrol) }),
-    el("div", { cls: "btns" }, [btn("いま見回る", (e) => patrolNow(e.currentTarget), "btn primary")]),
+    el("div", { cls: "btns" }, [btn("いま見回る", (e) => patrolNow(e.currentTarget), "btn")]),
     msg,
   ]);
+  // 濃い色のボタンは1画面に1つ：いちばん上の「押せるカード」の OK（または「見直した」）だけ
+  const first = d.open.findIndex((x) => x.review || x.can_ok);
   const list = d.open.length
-    ? d.open.map(decisionCard)
+    ? d.open.map((x, i) => decisionCard(x, i === first))
     : [el("article", { cls: "card" }, [el("p", { cls: "state", text: "いま、確認待ちはありません。新しいことがあれば、チームがここに置きます" })])];
-  p.replaceChildren(head, ...list, decidedCard(d.done));
+  // 決めたものが無いときは何も足さない（null をそのまま渡すと「null」と出る）
+  p.replaceChildren(head, ...list, ...[decidedCard(d.done)].filter(Boolean));
   dx.openKey = d.open.map((x) => `${x.id}:${x.can_ok}`).join(",");
 }
 
-function decisionCard(d) {
+function decisionCard(d, main = false) {
   const [lv, cls] = LEVEL[d.level] ?? LEVEL.info;
   const msg = el("div", { attrs: { "aria-live": "polite" } });
-  if (d.review) return priceCard(d, lv, cls, msg);
-  const ok = btn(OK_LABEL[d.kind] ?? "OK（見ました）", () => decide(d, msg), "btn");
+  if (d.review) return priceCard(d, lv, cls, msg, main);
+  const ok = btn(OK_LABEL[d.kind] ?? "OK（見ました）", () => decide(d, msg), main ? "btn primary" : "btn");
   if (!d.can_ok) {
     ok.disabled = true;
     ok.dataset.lock = "1";
@@ -2544,14 +2555,14 @@ function decisionCard(d) {
 }
 
 // 値付けの知らせ：OK の代わりに「見直した／このまま」。押したことを記録するだけで、予約も帳簿も変えない
-function priceCard(d, lv, cls, msg) {
+function priceCard(d, lv, cls, msg, main = false) {
   return el("article", { cls: `card dx dx-${d.level}` }, [
     el("div", { cls: "card-head" }, [el("span", { cls: `pill ${cls}`, text: lv }), el("span", { cls: "pill", text: "値付け" })]),
     el("h3", { cls: "card-title dx-title", text: d.title }),
     el("dl", { cls: "kv dx-price" }, d.facts.flatMap((f) => [el("dt", { text: f.label }), el("dd", { text: f.value })])),
     el("p", { cls: "sub", text: "予約サイトで値段や条件を見直したら「見直した」、そのままにするなら「このまま」を押してください。押したことを記録して、あとで今月の数字で比べます" }),
     el("div", { cls: "btns" }, [
-      btn("見直した", () => decideReview(d, "reviewed", msg), "btn primary"),
+      btn("見直した", () => decideReview(d, "reviewed", msg), main ? "btn primary" : "btn"),
       btn("このまま", () => decideReview(d, "kept", msg), "btn"),
       btn("今月の数字を見る", () => openFrom(d), "btn"),
     ]),
@@ -2741,7 +2752,8 @@ async function loadFacts() {
       const rooms = t ? ["A", "B"].filter((r) => t.stays.some((s) => s.room === r)).map((r) => ROOM[r]) : [];
       const unknown = t ? t.stays.some((s) => !s.room) : false;
       const tonight = rooms.length ? `${rooms.join("・")}が泊まり` : unknown ? "部屋未定の予約あり" : "空いています";
-      set("fact-calendar", ["今夜：", el("b", { text: tonight }), `　${mm}の予約${d.summary.reservations}件`]);
+      // 「10月の／予約3件」と割れないよう、後半は1つのかたまりにする
+      set("fact-calendar", ["今夜：", el("b", { text: tonight }), "　", el("span", { cls: "nw", text: `${mm}の予約${d.summary.reservations}件` })]);
     }),
     api("/api/cleaning").then((d) =>
       set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), `　3週間で${new Set(d.items.map((i) => i.date)).size}日`] : ["3週間、清掃の日はありません"]),
