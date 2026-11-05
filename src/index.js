@@ -53,7 +53,7 @@
 // - メール受け取り（email）              決めた相手からの予約メールだけ読んで確認待ちに置き、見回る
 // ⚠️ オーナー画面の鍵（Cloudflare Access）を付けるまでは、手元（localhost）以外からは開けない。
 // ⚠️ 暗証番号はどの表にも保存しない。env.DOOR_CODE からコピー／表示のときだけ入れる。
-import { dayCounter, headcount, minpakuReport, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
+import { dayCounter, headcount, minpakuReport, periodMonths, reportPeriodOf, rulesFromInnProfile, stayNightRows, taxDraft } from "./lib/counting.js";
 import { monthOf, todayJst } from "./lib/dates.js";
 import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
@@ -62,6 +62,7 @@ import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
 import { stayCalendar } from "./lib/calendar.js";
 import { checkRoomName, MAX_ROOMS, nextRoomCode } from "./lib/rooms.js";
 import { checkInnPatch } from "./lib/inn-settings.js";
+import { ReportCsvError, submissionCsv } from "./lib/report-csv.js";
 import { makeClient } from "./lib/anthropic.js";
 import {
   confirmBookingEmail,
@@ -259,6 +260,34 @@ async function handleGet(url, env, today) {
     const period = url.searchParams.get("period") ?? reportPeriodOf(monthOf(today));
     const { results } = await env.DB.prepare(RES_SELECT).all();
     return json({ today, ...minpakuReport(results, period, today) });
+  }
+  if (p === "/api/minpaku/report.csv") {
+    // 定期報告の提出用CSV（見出しなし・UTF-8・CRLF）。国籍が分からない人・届出番号なしのときは、つくらずに直す所を返す
+    const period = url.searchParams.get("period") ?? reportPeriodOf(monthOf(today));
+    try {
+      periodMonths(period);
+    } catch {
+      throw new HttpError(400, "期間の形が違います（例：2026-08_09）");
+    }
+    const inn = await loadInn(env);
+    const { results } = await env.DB.prepare(RES_SELECT).all();
+    const report = minpakuReport(results, period, today);
+    let csv;
+    try {
+      csv = submissionCsv(report, inn.notification_no);
+    } catch (e) {
+      if (e instanceof ReportCsvError) return json({ error: e.message, fix: e.fix, reservations: e.reservations }, 422);
+      throw e;
+    }
+    return new Response(csv.text, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="report.csv"; filename*=UTF-8''${encodeURIComponent(csv.filename)}`,
+        "x-filename": encodeURIComponent(csv.filename),
+        "cache-control": "no-store",
+        ...SECURITY_HEADERS,
+      },
+    });
   }
   if (p === "/api/cleaning") {
     // 清掃が必要な日（M18）：今日から3週間。名前は読まない。AIは使わない

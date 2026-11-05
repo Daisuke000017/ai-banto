@@ -770,11 +770,60 @@ function reportCard(r) {
   if (nat.some(([k]) => k === "UNKNOWN")) card.append(el("p", { cls: "notice warn", text: "国籍が分からない人がいます。予約サイトの情報で確かめてから報告してください" }));
   const rows = [["項目", "値"], ["期間", jpPeriod(r.period)], ["宿泊日数", r.stay_days], ["宿泊者数", r.guests], ["延べ宿泊者数", r.guest_nights]];
   for (const [k, v] of nat) rows.push([`国籍：${COUNTRY[k] ?? k}`, v]);
+  const result = el("div", { attrs: { "aria-live": "polite" } });
   card.append(
     el("p", { cls: "notice info", text: "報告は、民泊制度運営システムでご本人が行います。この画面からは送りません" }),
-    el("div", { cls: "btns" }, [btn("CSVをつくる", () => downloadCsv(`定期報告_集計表_${r.period}.csv`, rows), "btn primary")]),
+    el("div", { cls: "btns" }, [
+      btn("提出用のCSVをつくる", () => submissionCsvDownload(r.period, result), "btn primary"),
+      btn("集計表のCSVをつくる", () => downloadCsv(`定期報告_集計表_${r.period}.csv`, rows), "btn"),
+    ]),
+    result,
+    el("details", {}, [
+      el("summary", { text: "提出用のCSVの形" }),
+      el("p", {
+        cls: "notice info",
+        text: "見出しの行なし・1行に「届出番号、期間、宿泊日数、宿泊者数、延べ宿泊者数、国籍22か国、泊まった日」。観光庁の操作マニュアルの記載に合わせていますが、マニュアルは改訂されることがあります。初めて出す前に、最新のマニュアルか窓口で形を確かめてください。集計表のCSVは見て確かめる用で、提出には使いません",
+      }),
+    ]),
   );
   return card;
+}
+
+// 提出用のCSV：数えるのも並べるのもサーバー（プログラム）。足りないものがあれば、つくらずに直す所を出す
+async function submissionCsvDownload(period, box) {
+  box.replaceChildren(loading("つくっています…"));
+  let res;
+  try {
+    res = await fetch(`/api/minpaku/report.csv?period=${encodeURIComponent(period)}`);
+  } catch {
+    box.replaceChildren(el("p", { cls: "notice warn", text: "つくれませんでした。少し待ってから、もう一度押してください" }));
+    return;
+  }
+  if (res.status === 422) {
+    const body = await res.json().catch(() => ({}));
+    const parts = [el("p", { text: body.error ?? "つくれませんでした" })];
+    if (body.fix === "settings") parts.push(el("a", { cls: "btn", text: "宿と部屋の設定を開く", attrs: { href: "#settings" } }));
+    if (body.reservations?.length) {
+      parts.push(
+        el("ul", {}, body.reservations.map((x) => el("li", { text: `${jpDate(x.checkin_date)}に着く予約（${x.reservation_id}）：${x.missing}人分` }))),
+      );
+    }
+    box.replaceChildren(el("div", { cls: "notice warn" }, parts));
+    return;
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    box.replaceChildren(el("p", { cls: "notice warn", text: errorText(new ApiError(res.status, body)) }));
+    return;
+  }
+  const name = decodeURIComponent(res.headers.get("x-filename") ?? "report.csv");
+  const url = URL.createObjectURL(await res.blob());
+  const a = el("a", { attrs: { href: url, download: name } });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  box.replaceChildren(el("p", { cls: "notice info", text: `${name} をつくりました。民泊制度運営システムの「CSVで一括報告」から、ご本人が出してください` }));
 }
 
 // ---- 清掃が必要な日（M18）：見るだけ。プログラムが台帳から数える ----

@@ -368,7 +368,7 @@ export function minpakuReport(reservations, period, today, nationalityOverrides 
       known += Number(c);
     }
     if (known < heads) nationality.UNKNOWN = (nationality.UNKNOWN ?? 0) + (heads - known);
-    counted.push({ reservation_id: r.id, checkin_date: r.checkin_date, guests: heads });
+    counted.push({ reservation_id: r.id, checkin_date: r.checkin_date, guests: heads, unknown_nationality: Math.max(0, heads - known) });
   }
 
   const due = reportDueDate(period);
@@ -378,6 +378,7 @@ export function minpakuReport(reservations, period, today, nationalityOverrides 
     due_date: due,
     days_left: today ? daysBetween(today, due) : null,
     stay_days: days.size,
+    nights: [...days].sort(),
     guests,
     guest_nights: guestNights,
     nationality,
