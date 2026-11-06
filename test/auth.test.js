@@ -17,10 +17,28 @@ import {
   parseHash,
   SESSION_MS,
   sha256Hex,
+  TURNSTILE_VERIFY_URL,
   verifyPassword,
 } from "../src/lib/auth.js";
 
 const PASSWORD = "test-only-password-123"; // テスト用（本物ではない）
+
+// ロボット除け（Turnstile）の確認先は、にせものに差し替える（本物の Cloudflare は呼ばない）
+// 札「ok-token」だけ通す。「other-host」は別のサイト用、「other-action」は別の操作用の札
+const TS_SECRET = "test-turnstile-secret";
+const TS_SITE_KEY = "test-turnstile-site-key";
+const turnstileCalls = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  if (String(input?.url ?? input) !== TURNSTILE_VERIFY_URL) return realFetch(input, init);
+  const b = JSON.parse(init.body);
+  turnstileCalls.push(b);
+  if (b.secret !== TS_SECRET) return Response.json({ success: false, "error-codes": ["invalid-input-secret"] });
+  if (b.response === "ok-token") return Response.json({ success: true, hostname: "banto.example.com", action: "login" });
+  if (b.response === "other-host") return Response.json({ success: true, hostname: "evil.example", action: "login" });
+  if (b.response === "other-action") return Response.json({ success: true, hostname: "banto.example.com", action: "signup" });
+  return Response.json({ success: false, "error-codes": ["invalid-input-response"] });
+};
 
 function fakeD1() {
   const db = new DatabaseSync(":memory:");
@@ -45,7 +63,12 @@ function fakeD1() {
 
 let HASH;
 const hash = async () => (HASH ??= await hashPassword(PASSWORD));
-const envWith = async (opts = {}) => ({ DB: fakeD1(), DEMO_TODAY: "2026-10-10", ...(opts.noHash ? {} : { OWNER_PASSWORD_HASH: await hash() }) });
+const envWith = async (opts = {}) => ({
+  DB: fakeD1(),
+  DEMO_TODAY: "2026-10-10",
+  ...(opts.noHash ? {} : { OWNER_PASSWORD_HASH: await hash() }),
+  ...(opts.noTurnstile ? {} : { TURNSTILE_SECRET: TS_SECRET, TURNSTILE_SITE_KEY: TS_SITE_KEY }),
+});
 
 const LOCAL = "http://localhost:8787";
 const REMOTE = "https://banto.example.com";
@@ -62,8 +85,8 @@ const req = (base, path, { method = "GET", body, cookie, origin = base, ip } = {
   });
 const call = (env, base, path, opts) => worker.fetch(req(base, path, opts), env, { waitUntil() {} });
 
-async function login(env, base = REMOTE, password = PASSWORD, ip) {
-  const res = await call(env, base, "/api/login", { method: "POST", body: { password }, ip });
+async function login(env, base = REMOTE, password = PASSWORD, ip, turnstile = "ok-token") {
+  const res = await call(env, base, "/api/login", { method: "POST", body: { password, turnstile }, ip });
   const set = res.headers.get("set-cookie");
   const cookie = set ? set.split(";")[0] : null;
   return { res, set, cookie };
@@ -207,7 +230,7 @@ test("ゲストの画面・API（宿のURL）とログイン画面は、ログ�
 });
 
 test("Secret が無いとき：手元は開いたまま・ほかからは 403。ログインはできない", async () => {
-  const env = await envWith({ noHash: true });
+  const env = await envWith({ noHash: true, noTurnstile: true });
   assert.equal((await call(env, LOCAL, "/api/reservations")).status, 200);
   assert.deepEqual(await (await call(env, LOCAL, "/api/session")).json(), { login_enabled: false });
   for (const path of ["/api/kpis?month=2026-10", "/", "/login", `/api/g/${"x".repeat(32)}/home`]) {
@@ -310,6 +333,61 @@ test("ログインできても、消すのは自分のまちがいの記録だ�
   await login(env, REMOTE, "wrong", "198.51.100.30");
   assert.equal((await login(env, REMOTE, PASSWORD, "198.51.100.30")).res.status, 200);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM owner_login_failures").get().n, 3);
+});
+
+test("ロボット除け：通らないと、パスワードを確かめず・まちがいの回数にも数えない", async () => {
+  const env = await envWith();
+  const failures = () => env.DB.raw.prepare("SELECT COUNT(*) AS n FROM owner_login_failures").get().n;
+  for (const t of [null, "", "bad-token", "other-host", "other-action", "x".repeat(3000), 123]) {
+    const { res, set } = await login(env, REMOTE, PASSWORD, "203.0.113.40", t);
+    assert.equal(res.status, 400, String(t));
+    assert.equal((await res.json()).error, MSG.robot);
+    assert.equal(set, null);
+  }
+  assert.equal(failures(), 0);
+  // ロボット除けで何度落ちても、オーナーは締め出されない
+  const before = turnstileCalls.length;
+  assert.equal((await login(env, REMOTE, PASSWORD, "203.0.113.40")).res.status, 200);
+  // 確認先には、秘密の鍵・札・相手の IP を渡す
+  assert.deepEqual(turnstileCalls.slice(before), [{ secret: TS_SECRET, response: "ok-token", remoteip: "203.0.113.40" }]);
+});
+
+test("ロボット除けの鍵が無いと、手元以外ではログインできない（503）。手元は鍵なしでも入れる", async () => {
+  const env = await envWith({ noTurnstile: true });
+  const r = await login(env, REMOTE, PASSWORD, "203.0.113.41");
+  assert.equal(r.res.status, 503);
+  assert.equal((await r.res.json()).error, MSG.notReady);
+  assert.equal(r.set, null);
+  assert.equal((await login(env, LOCAL, PASSWORD, undefined, undefined)).res.status, 200);
+  // 片方の鍵だけでも、手元以外は開けない
+  const half = { ...(await envWith({ noTurnstile: true })), TURNSTILE_SECRET: TS_SECRET };
+  assert.equal((await login(half, REMOTE)).res.status, 503);
+});
+
+test("ログイン画面の設定：公開の鍵（サイトキー）だけを返す。秘密の鍵は返さない", async () => {
+  const env = await envWith();
+  const res = await call(env, REMOTE, "/api/login-config");
+  assert.equal(res.status, 200);
+  const text = await res.text();
+  assert.deepEqual(JSON.parse(text), { turnstile_site_key: TS_SITE_KEY });
+  assert.ok(!text.includes(TS_SECRET));
+  assert.equal((await call(env, REMOTE, "/api/login-config", { method: "POST", body: {} })).status, 405);
+  // 手元で鍵が無いときは、部品を出さない
+  const local = await envWith({ noTurnstile: true });
+  assert.deepEqual(await (await call(local, LOCAL, "/api/login-config")).json(), { turnstile_site_key: null });
+});
+
+test("ロボット除けの部品を読んでよいのは、ログイン画面だけ", async () => {
+  const env = { ...(await envWith({ noHash: true })), ASSETS: { fetch: async () => new Response("<!doctype html>", { headers: { "content-type": "text/html" } }) } };
+  const login = await call(env, LOCAL, "/login");
+  const csp = login.headers.get("content-security-policy");
+  assert.match(csp, /script-src 'self' https:\/\/challenges\.cloudflare\.com/);
+  assert.match(csp, /frame-src https:\/\/challenges\.cloudflare\.com/);
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.equal(login.headers.get("referrer-policy"), "strict-origin");
+  const home = await call(env, LOCAL, "/");
+  assert.doesNotMatch(home.headers.get("content-security-policy"), /challenges\.cloudflare\.com/);
+  assert.equal(home.headers.get("referrer-policy"), "no-referrer");
 });
 
 test("本番の設定（wrangler.jsonc）に、デモの「今日」を入れていない", () => {

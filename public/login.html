@@ -18,6 +18,7 @@
     <form id="login-form" novalidate>
       <label for="password">パスワード</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200">
+      <div class="robot" id="turnstile" hidden></div>
       <p class="msg" id="msg" role="alert" hidden></p>
       <button type="submit" class="btn primary" id="submit">ログインする</button>
     </form>

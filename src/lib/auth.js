@@ -7,6 +7,9 @@
 //   全体の50回で締め出されたら：15分待つか、D1 で DELETE FROM owner_login_failures を流す
 // - Secret が無いとき：手元（localhost）は開いたまま（デモ用）。それ以外からは、オーナーの画面・API は 403
 // - ゲストの画面・API（宿のURL）とログイン画面だけは、ログインなしで開ける（OPEN の一覧に書いたものだけ）
+// - 手元以外では、パスワードを確かめる前に Cloudflare のロボット除け（Turnstile）を通す（ゾロ審査 2026-11-06）
+//   Secret「TURNSTILE_SECRET」と「TURNSTILE_SITE_KEY」が無いと、手元以外ではログインできない（503）
+//   ロボット除けで落ちた分は、まちがいの回数に数えない（よそからオーナーを締め出せないように）
 
 export const COOKIE_NAME = "__Host-banto_owner";
 export const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -21,7 +24,47 @@ export const MSG = {
   locked: "パスワードを続けてまちがえたため、しばらくログインできません。15分ほど待ってから、もう一度お試しください",
   login: "ログインしてください",
   closed: "この画面はまだ公開していません",
+  robot: "ロボットではないことの確認ができませんでした。画面を読み直して、もう一度お試しください",
+  notReady: "ログインの準備がまだできていません",
 };
+
+export const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const TURNSTILE_ACTION = "login";
+const TURNSTILE_TOKEN_MAX = 2048;
+
+// 手元以外ではロボット除けを必ず使う（手元でも Secret があれば使う）
+export const turnstileRequired = (env, url) => !isLocalHost(url) || Boolean(env.TURNSTILE_SECRET);
+
+/**
+ * ロボット除けの札を Cloudflare に確かめてもらう。
+ * @returns {Promise<"ok"|"bad"|"not_ready">}
+ */
+export async function verifyTurnstile(env, token, request, url) {
+  if (!env.TURNSTILE_SECRET || !env.TURNSTILE_SITE_KEY) return "not_ready";
+  if (typeof token !== "string" || !token || token.length > TURNSTILE_TOKEN_MAX) return "bad";
+  const ip = request.headers.get("cf-connecting-ip");
+  try {
+    const res = await fetch(TURNSTILE_VERIFY_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: token, ...(ip ? { remoteip: ip } : {}) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.error("auth", "turnstile siteverify status", res.status);
+      return "bad";
+    }
+    const r = await res.json();
+    if (r?.success !== true) return "bad";
+    // 別のサイト・別の操作のために出された札は使わせない
+    if (r.hostname && r.hostname !== url.hostname) return "bad";
+    if (r.action && r.action !== TURNSTILE_ACTION) return "bad";
+    return "ok";
+  } catch (e) {
+    console.error("auth", "turnstile siteverify failed", e?.name);
+    return "bad";
+  }
+}
 
 // ログインなしで開けるもの（ここに無いものは、すべてログインが要る）
 const OPEN_STATIC = new Set(["/login", "/login.html", "/login.js", "/login.css", "/guest.js", "/guest.css"]);
@@ -191,9 +234,19 @@ export async function ownerGate(request, url, env, tools, now = Date.now()) {
   // Secret が無いまま公開されたら、手元以外は全部閉じる（前と同じ）
   if (!enabled && !local) return json({ error: MSG.closed }, 403);
 
+  // ログイン画面が、ロボット除けの部品を出すための公開の鍵（サイトキー）。秘密ではない
+  if (p === "/api/login-config") {
+    if (request.method !== "GET") return json({ error: "この操作は受け付けていません" }, 405);
+    return json({ turnstile_site_key: turnstileRequired(env, url) ? env.TURNSTILE_SITE_KEY || null : null });
+  }
   if (p === "/api/login") {
     if (request.method !== "POST") return json({ error: "この操作は受け付けていません" }, 405);
     const body = await readJsonBody(request, url);
+    if (turnstileRequired(env, url)) {
+      const t = await verifyTurnstile(env, body.turnstile, request, url);
+      if (t === "not_ready") return json({ error: MSG.notReady }, 503);
+      if (t !== "ok") return json({ error: MSG.robot }, 400);
+    }
     const password = typeof body.password === "string" && body.password.length <= 200 ? body.password : "";
     const r = await tryLogin(env, password, now, await clientKey(request, env));
     if (r.locked) return json({ error: MSG.locked }, 429);

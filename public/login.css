@@ -65,3 +65,5 @@ input {
 input:focus-visible, .btn:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
 .msg { color: var(--danger); background: var(--danger-bg); border-radius: var(--r); padding: 8px 12px; font-size: 16px; }
 .note { margin-top: 16px; color: var(--ink-sub); font-size: 16px; }
+/* ロボット除け（Turnstile）の部品。読み込む前と後で高さが変わらないように */
+.robot { min-height: 65px; margin-top: 8px; }

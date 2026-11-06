@@ -1,5 +1,6 @@
 {
-  // AI番頭（Cloudflare Workers）。いまは手元（--local）だけで動かす。公開は社長の指示があったときだけ。
+  // AI番頭（Cloudflare Workers）。公開は社長の指示があったときだけ（2026-11-06 初回公開：ai-banto.daisuke-inoue.workers.dev）。
+  // デモ公開は `npx wrangler deploy --var DEMO_TODAY:2026-10-10`（架空データのデモ用。実際の宿で使うときは --var を付けない）
   "name": "ai-banto",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
@@ -19,6 +20,7 @@
     {
       "binding": "DB",
       "database_name": "ai-banto",
+      "database_id": "b110e5e1-837d-4958-a08d-7fcbef726055",
       "migrations_dir": "migrations"
     }
   ]

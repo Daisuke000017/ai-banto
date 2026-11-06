@@ -131,6 +131,11 @@ const SECURITY_HEADERS = {
   "content-security-policy": CSP,
   "referrer-policy": "no-referrer",
 };
+// ログイン画面だけ：Cloudflare のロボット除け（Turnstile）の部品を読んで、枠の中に出してよい
+// 部品が「どのサイトから呼ばれたか」を確かめられるよう、送り先には自分のサイト名（origin）だけを伝える
+const LOGIN_PAGES = new Set(["/login", "/login.html"]);
+const LOGIN_CSP = CSP.replace("script-src 'self'", "script-src 'self' https://challenges.cloudflare.com") + "; frame-src https://challenges.cloudflare.com";
+const LOGIN_HEADERS = { ...SECURITY_HEADERS, "content-security-policy": LOGIN_CSP, "referrer-policy": "strict-origin" };
 const json = (body, status = 200, extra = {}) =>
   new Response(JSON.stringify(body, null, 2), {
     status,
@@ -1304,7 +1309,8 @@ async function serveAsset(request, env, path = null) {
   if (!env.ASSETS) return json({ error: "見つかりません" }, 404);
   const res = await env.ASSETS.fetch(path ? new Request(new URL(path, request.url), { method: "GET" }) : request);
   const out = new Response(res.body, res);
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  const headers = !path && LOGIN_PAGES.has(new URL(request.url).pathname) ? LOGIN_HEADERS : SECURITY_HEADERS;
+  for (const [k, v] of Object.entries(headers)) out.headers.set(k, v);
   return out;
 }
 
