@@ -37,6 +37,8 @@ form {
   border-radius: var(--r);
   padding: 24px 16px;
   display: grid;
+  /* 列の幅を枠に固定する（iPhone は入力欄のもともとの幅を広く見積もり、列ごと右へはみ出すため） */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 label { font-weight: 700; }
@@ -48,6 +50,8 @@ input {
   border: 2px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
+  width: 100%;
+  min-width: 0;
 }
 .btn {
   margin-top: 16px;
