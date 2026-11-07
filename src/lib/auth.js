@@ -67,7 +67,7 @@ export async function verifyTurnstile(env, token, request, url) {
 }
 
 // ログインなしで開けるもの（ここに無いものは、すべてログインが要る）
-const OPEN_STATIC = new Set(["/login", "/login.html", "/login.js", "/login.css", "/guest.js", "/guest.css"]);
+const OPEN_STATIC = new Set(["/login", "/login.html", "/login.js", "/login.css", "/guest.js", "/guest.css", "/favicon.svg"]);
 const OPEN_PATTERNS = [
   /^\/g\/[A-Za-z0-9_-]{20,100}$/, // ゲストの画面（宿のURL）
   /^\/api\/g\/[^/]+\/(home|bus|drill|language|profile|ask)$/, // ゲストの API（URLの鍵で守る）

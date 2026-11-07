@@ -61,7 +61,8 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
 /* 上の帯 */
 .top { background: var(--surface); border-bottom: 1px solid var(--line); padding: var(--s4) var(--gutter) var(--s3); }
 .top-inner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s3); }
-.brand { font-size: 15px; font-weight: 700; color: var(--action); letter-spacing: 0.04em; }
+.brand { font-size: 15px; font-weight: 700; color: var(--action); letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 6px; align-self: center; }
+.brand-mark { flex: none; }
 .inn { font-size: 22px; font-weight: 700; line-height: 1.4; }
 .today { color: var(--ink-sub); font-size: 16px; margin-left: auto; }
 
@@ -74,6 +75,9 @@ a:focus-visible, .btn:focus-visible, select:focus-visible, textarea:focus-visibl
   transition: border-color 0.3s, color 0.3s, background-color 0.3s;
 }
 .team li.working { color: var(--ink); font-weight: 700; border-top-color: var(--glow); background: var(--glow-bg); }
+/* 担当のしるし（持ち物の絵）。働いている担当は紺で濃くする（金色は薄い黄色の上でかすれるため） */
+.chip-mark { flex: none; }
+.team li.working .chip-mark { color: var(--action); }
 .chip {
   display: flex;
   align-items: center;

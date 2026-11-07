@@ -222,6 +222,7 @@ test("ゲストの画面・API（宿のURL）とログイン画面は、ログ�
   assert.equal(isOpenPath("GET", "/login"), true);
   assert.equal(isOpenPath("GET", "/login.js"), true);
   assert.equal(isOpenPath("GET", "/guest.js"), true);
+  assert.equal(isOpenPath("GET", "/favicon.svg"), true); // ログイン画面のタブにもアイコンを出す
   assert.equal(isOpenPath("POST", "/login.js"), false);
   assert.equal(isOpenPath("GET", "/"), false);
   assert.equal(isOpenPath("GET", "/app.js"), false);

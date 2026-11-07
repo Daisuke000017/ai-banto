@@ -29,7 +29,7 @@ h1, p { margin: 0; }
   margin: 12vh auto 0;
   padding: 24px 16px;
 }
-.brand { color: var(--ink-sub); font-size: 16px; font-weight: 700; }
+.brand { color: var(--ink-sub); font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 h1 { font-size: 24px; margin-bottom: 24px; }
 form {
   background: var(--surface);
