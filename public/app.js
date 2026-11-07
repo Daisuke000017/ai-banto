@@ -3284,7 +3284,7 @@ function renderDrill(d, working = null) {
   document.body.classList.toggle("drill", drill.active);
   $("drill-banner").hidden = !drill.active;
   const b = $("drill-btn");
-  b.textContent = drill.active ? "訓練を終える" : "訓練：津波注意報";
+  b.textContent = drill.active ? "訓練を終える" : "津波の避難訓練を始める";
   b.setAttribute("aria-pressed", String(drill.active));
   b.disabled = drill.busy;
   syncDrillBtn();
@@ -3826,11 +3826,9 @@ async function loadFacts() {
   const mm = shortMonth(m);
   const set = (id, parts) => $(id).replaceChildren(...parts);
   await Promise.allSettled([
-    api("/api/decisions").then((d) => {
-      const urgent = d.open.filter((x) => x.level === "urgent").length;
-      set("fact-decisions", d.open.length
-        ? ["確認待ち ", el("b", { text: `${d.open.length}件` }), urgent ? `（急ぎ${urgent}件）` : "", `　${patrolText(d.last_patrol)}`]
-        : ["確認待ちはありません", `　${patrolText(d.last_patrol)}`]);
+    api("/api/decisions").then(fillHero, () => {
+      $("hero-num").textContent = "—";
+      $("hero-patrol").textContent = "決裁箱を読み込めませんでした。開いて確かめてください";
     }),
     api(`/api/kpis?month=${m}`).then((d) => set("fact-kpi", [`${mm}の売上 `, el("b", { text: `${yen(d.total)}円` })])),
     // 宿泊税は申告する月（先月分）を出す。宿泊税の画面も先月から開く
@@ -3852,11 +3850,57 @@ async function loadFacts() {
     api("/api/cleaning").then((d) =>
       {
         const open = d.items.filter((i) => i.cleaner_id == null).length;
-        const tail = d.cleaners?.some((c) => c.active) && open ? `　担当まだ${open}件` : "";
-        set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), `　3週間で${new Set(d.items.map((i) => i.date)).size}日`, tail] : ["3週間、清掃の日はありません"]);
+        const tail = d.cleaners?.some((c) => c.active) && open ? el("span", { cls: "fact-warn nw", text: `　担当まだ${open}件` }) : "";
+        set("fact-cleaning", d.items.length ? ["次は ", el("b", { text: jpDate(d.items[0].date) }), "　", el("span", { cls: "nw", text: `この先3週間で${new Set(d.items.map((i) => i.date)).size}日` }), tail] : ["3週間、清掃の日はありません"]);
       }
     ),
   ]);
+}
+
+// ホームの決裁箱：数・内訳の札・いちばん上の1件・見回りの時刻。状態は3つ（急ぎあり／ふつう／0件）
+function fillHero(d) {
+  const open = d.open ?? [];
+  const count = (lv) => open.filter((x) => (x.level ?? "info") === lv).length;
+  const urgent = count("urgent");
+  const empty = open.length === 0;
+  const hero = $("hero");
+  hero.classList.toggle("is-urgent", urgent > 0);
+  hero.classList.toggle("is-empty", empty);
+  $("hero-patrol").replaceChildren(...heroPatrolText(d.last_patrol, empty));
+  $("hero-count").hidden = empty;
+  $("hero-empty").hidden = !empty;
+  $("hero-note").hidden = !empty;
+  $("hero-num").textContent = String(open.length);
+  const tags = [["urgent", "急ぎ"], ["warn", "確かめて"], ["info", "お知らせ"]]
+    .map(([lv, ja]) => [lv, ja, count(lv)])
+    .filter(([, , n]) => n > 0)
+    .map(([lv, ja, n]) => el("li", { cls: `t-${lv}`, text: `${ja} ${n}` }));
+  $("hero-tags").replaceChildren(...(empty ? [] : tags));
+  // 一覧は急ぎ → 確かめて → お知らせの順で届く。いちばん上の1件だけを出す
+  const top = open[0];
+  $("hero-top").hidden = !top;
+  if (top) {
+    $("hero-top-label").textContent = urgent ? "いちばん急ぎ" : "まず見るもの";
+    $("hero-top-title").textContent = top.title;
+  }
+  const btn = $("hero-btn");
+  btn.textContent = empty && d.done?.length ? "最近OKしたものを見る" : "決裁箱を開く";
+}
+
+// 「番頭がけさ7:00に見回り、確認待ちを最新にしました」。今日でなければ日付を出す。0件なら「気になることはありません」
+function heroPatrolText(last, empty = false) {
+  if (!last) return ["番頭はまだ見回っていません"];
+  const t = Date.parse(`${String(last.finished_at ?? "").replace(" ", "T")}Z`);
+  if (!Number.isFinite(t)) return [patrolText(last)];
+  // 見回りは本当の時計で記録されるので、デモの「今日」ではなく本当の今日と比べる（デモでも「けさ7:00」と読める）
+  const j = new Date(t + 9 * 3600000);
+  const dayNo = (ms) => Math.floor((ms + 9 * 3600000) / 86400000);
+  const ago = dayNo(Date.now()) - dayNo(t);
+  const when = ago === 0 ? (j.getUTCHours() < 11 ? "けさ" : "きょう") : ago === 1 ? "きのうの" : `${j.getUTCMonth() + 1}月${j.getUTCDate()}日の`;
+  const at = `番頭が${when}${jstTime(last.finished_at)}に`;
+  // 「いま気に／なることは」と言葉の途中で割れないよう、後半は1つのかたまりにする
+  const nw = (text) => el("span", { cls: "nw", text });
+  return empty ? [`${at}見回りました。`, nw("いま気になることはありません")] : [`${at}見回り、`, nw("確認待ちを最新にしました")];
 }
 
 // 180日の小さな棒：泊まった日（紺）と予約済みの日（水色）

@@ -16,7 +16,7 @@
       <p class="brand">AI番頭</p>
       <h1 id="inn-name" class="inn">読み込み中</h1>
       <p class="today">デモの今日：<span id="today">—</span></p>
-      <button type="button" class="btn drill-btn" id="drill-btn" aria-pressed="false">訓練：津波注意報</button>
+      <button type="button" class="btn drill-btn" id="drill-btn" aria-pressed="false">津波の避難訓練を始める</button>
     </div>
     <div class="drill-banner" id="drill-banner" role="status" hidden>
       <p class="drill-label">訓練中</p>
@@ -39,70 +39,80 @@
 
     <section id="drill-panel" class="drill-panel" aria-label="訓練：避難の案内" hidden></section>
 
-    <section id="panel-home" class="panel" aria-labelledby="home-title">
-      <h2 class="h2" id="home-title">きょうの仕事をえらぶ</h2>
-      <ul class="menu">
-        <li><a class="row row-decisions" href="#decisions">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
-          <span class="row-text"><span class="row-name">決裁箱</span><span class="row-fact" id="fact-decisions">チームが見回って、確認してほしいものを置きます</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#kpi">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
-          <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact" id="fact-kpi">売上と手取りを数えます</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#tax">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
-          <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact" id="fact-tax">人泊と宿泊税を数えます</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#minpaku">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
-          <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact" id="fact-minpaku">180日と定期報告を数えます</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#calendar">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19V6M2 15h20v4M22 15v-3a3 3 0 0 0-3-3h-8v6"/><circle cx="6.5" cy="11.5" r="2"/></svg></span>
-          <span class="row-text"><span class="row-name">宿泊カレンダー</span><span class="row-fact" id="fact-calendar">どの日に、どの部屋が泊まっているか</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#ledger">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg></span>
-          <span class="row-text"><span class="row-name">予約の台帳</span><span class="row-fact" id="fact-ledger">予約を手で入れる・直す・取り消す</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#cleaning">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2l-4 9"/><path d="M7 11h8l2 10H5z"/><path d="M9 15v6M13 15v6"/></svg></span>
-          <span class="row-text"><span class="row-name">清掃が必要な日</span><span class="row-fact" id="fact-cleaning">今日から3週間の清掃の日</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#guest">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span>
-          <span class="row-text"><span class="row-name">ゲスト連絡</span><span class="row-fact">案内の下書きをつくる</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#mail">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
-          <span class="row-text"><span class="row-name">予約メール</span><span class="row-fact">予約サイトのメールを読み取る</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#money">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M4 8h16"/><path d="M4 8l-2 6a3 3 0 0 0 4 0zM20 8l-2 6a3 3 0 0 0 4 0z"/></svg></span>
-          <span class="row-text"><span class="row-name">お金の照合</span><span class="row-fact">明細と予約を照らし合わせる</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#eval">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg></span>
-          <span class="row-text"><span class="row-name">チームの成績</span><span class="row-fact">自作の例題40件で確かめた結果</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-        <li><a class="row" href="#settings">
-          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-5h4v5"/></svg></span>
-          <span class="row-text"><span class="row-name">宿と部屋の設定</span><span class="row-fact">宿の名前・届出番号・部屋を入れる</span></span>
-          <span class="chev" aria-hidden="true">›</span>
-        </a></li>
-      </ul>
+    <section id="panel-home" class="panel home" aria-labelledby="home-title">
+      <h2 class="visually-hidden" id="home-title">ホーム</h2>
+
+      <!-- いちばん上：決裁箱。数と「いちばん急ぎ」だけを大きく出す（赤は枠と「急ぎ」の札だけ） -->
+      <article class="home-hero" id="hero" aria-labelledby="hero-name">
+        <p class="hero-patrol"><span class="hero-dot" aria-hidden="true"></span><span id="hero-patrol">番頭の見回りを読んでいます</span></p>
+        <div class="hero-body">
+          <h3 class="hero-name" id="hero-name">決裁箱</h3>
+          <p class="hero-count" id="hero-count">確認待ち <b id="hero-num">…</b> 件</p>
+          <p class="hero-empty" id="hero-empty" hidden><span class="hero-check" aria-hidden="true">✓</span>確認待ちはありません</p>
+          <ul class="hero-tags" id="hero-tags" aria-label="確認待ちの内訳"></ul>
+          <div class="hero-top" id="hero-top" hidden>
+            <p class="hero-top-label" id="hero-top-label">まず見るもの</p>
+            <p class="hero-top-title" id="hero-top-title"></p>
+          </div>
+          <p class="hero-note" id="hero-note" hidden>すべて片づいています。</p>
+          <a class="btn primary hero-btn" id="hero-btn" href="#decisions">決裁箱を開く</a>
+        </div>
+      </article>
+
+      <div class="home-grid">
+        <section class="home-group" aria-labelledby="home-week">
+          <h3 class="home-h" id="home-week">きょう・今週</h3>
+          <ul class="menu">
+          <li><a class="row" href="#calendar">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 19V6M2 15h20v4M22 15v-3a3 3 0 0 0-3-3h-8v6"/><circle cx="6.5" cy="11.5" r="2"/></svg></span>
+            <span class="row-text"><span class="row-name">宿泊カレンダー</span><span class="row-fact" id="fact-calendar">どの日に、どの部屋が泊まっているか</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          <li><a class="row" href="#cleaning">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2l-4 9"/><path d="M7 11h8l2 10H5z"/><path d="M9 15v6M13 15v6"/></svg></span>
+            <span class="row-text"><span class="row-name">清掃の日・担当</span><span class="row-fact" id="fact-cleaning">今日から3週間の清掃の日</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          <li><a class="row" href="#guest">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></span>
+            <span class="row-text"><span class="row-name">ゲスト連絡</span><span class="row-fact">案内の下書きをつくる</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          </ul>
+        </section>
+
+        <section class="home-group" aria-labelledby="home-due">
+          <h3 class="home-h" id="home-due">締切と数字</h3>
+          <ul class="menu">
+          <li><a class="row" href="#minpaku">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+            <span class="row-text"><span class="row-name">民泊の手続き</span><span class="row-fact" id="fact-minpaku">180日と定期報告を数えます</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          <li><a class="row" href="#tax">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg></span>
+            <span class="row-text"><span class="row-name">宿泊税</span><span class="row-fact" id="fact-tax">人泊と宿泊税を数えます</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          <li><a class="row" href="#kpi">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+            <span class="row-text"><span class="row-name">今月の数字</span><span class="row-fact" id="fact-kpi">売上と手取りを数えます</span></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </a></li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="home-group" aria-labelledby="home-input">
+        <h3 class="home-h" id="home-input">予約とお金を入れる</h3>
+        <ul class="tools">
+          <li><a class="tool-row" href="#mail"><span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span><span class="tool-name">予約メールを読ませる</span><span class="chev" aria-hidden="true">›</span></a></li>
+          <li><a class="tool-row" href="#money"><span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 21h14M4 8h16"/><path d="M4 8l-2 6a3 3 0 0 0 4 0zM20 8l-2 6a3 3 0 0 0 4 0z"/></svg></span><span class="tool-name">お金の照合</span><span class="chev" aria-hidden="true">›</span></a></li>
+          <li><a class="tool-row" href="#ledger"><span class="tool-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg></span><span class="tool-name">予約の台帳を見る</span><span class="chev" aria-hidden="true">›</span></a></li>
+        </ul>
+      </section>
+
+      <p class="home-foot"><a href="#settings">宿と部屋の設定</a><a href="#eval">チームの成績</a></p>
     </section>
 
     <section id="panel-decisions" class="panel" aria-label="決裁箱" hidden></section>
