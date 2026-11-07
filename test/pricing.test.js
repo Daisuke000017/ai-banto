@@ -65,7 +65,8 @@ test("3日以上続く休み：11月の3連休と、年末年始の6連休", () 
 
 test("上げどきの夜：今日から7〜90日先の連休と、表にある行事（出典つき）", () => {
   const evs = eventNights(today);
-  assert.deepEqual(evs.map((e) => e.id), ["renkyu-2026-11-21", "aotai-2026", "renkyu-2026-12-29"]);
+  // 11/7 から見て 11/14〜2/5 の間：11月の3連休・マラソン前の晩・年末年始・成人の日の3連休（1/9〜11）
+  assert.deepEqual(evs.map((e) => e.id), ["renkyu-2026-11-21", "aotai-2026", "renkyu-2026-12-29", "renkyu-2027-01-09"]);
   // 連休の最後の日は次の日が平日なので、夜に入れない
   assert.deepEqual(evs[0].nights, ["2026-11-21", "2026-11-22"]);
   assert.deepEqual(evs[1].nights, ["2026-12-12"]); // マラソンの前の晩
@@ -89,7 +90,8 @@ test("1泊あたりの手取り＝（値段×泊数×（1−手数料）−清�
 });
 
 test("値段の目安：泊まり終えた予約の1泊あたりの平均を千円単位に", () => {
-  assert.deepEqual(guidePrice(reservations, today), { price: 20000, reservations: 13, nights: 29 });
+  // 11/7 までに泊まり終えたのは16件・36泊（10/10 のころの13件・29泊に、R14 の3泊・R15 の2泊・R16 の2泊が加わった）
+  assert.deepEqual(guidePrice(reservations, today), { price: 20000, reservations: 16, nights: 36 });
   assert.equal(guidePrice([], today), null);
 });
 
@@ -137,34 +139,34 @@ test("月の1泊あたりの手取り：手数料が分からない予約は外�
 
 test("1泊だけ空いた夜：同じ部屋の予約と予約のあいだに1泊だけ空いている夜を拾う", () => {
   const rs = [
-    res("G1", "A", "2026-11-02", "2026-11-04"),
-    res("G2", "A", "2026-11-05", "2026-11-07"), // 11/4 が1泊だけ空く
-    res("G3", "B", "2026-11-02", "2026-11-04"),
-    res("G4", "B", "2026-11-06", "2026-11-07"), // 2泊空く → 拾わない
-    res("G5", "A", "2026-10-08", "2026-10-09"),
-    res("G6", "A", "2026-10-10", "2026-10-11"), // 今日の夜 → 拾わない
+    res("G1", "A", "2026-11-30", "2026-12-02"),
+    res("G2", "A", "2026-12-03", "2026-12-05"), // 12/2 が1泊だけ空く
+    res("G3", "B", "2026-11-30", "2026-12-02"),
+    res("G4", "B", "2026-12-04", "2026-12-05"), // 2泊空く → 拾わない
+    res("G5", "A", "2026-11-06", "2026-11-07"),
+    res("G6", "A", "2026-11-08", "2026-11-09"), // 今日（11/7）の夜 → 拾わない
   ];
   const gaps = findGaps(rs, today, 2);
-  assert.deepEqual(gaps.map((g) => [g.room, g.night]), [["A", "2026-11-04"]]);
+  assert.deepEqual(gaps.map((g) => [g.room, g.night]), [["A", "2026-12-02"]]);
   // その夜に部屋未定の予約があれば、空いているとは言わない
-  assert.equal(findGaps([...rs, res("G7", null, "2026-11-04", "2026-11-05")], today, 2).length, 0);
+  assert.equal(findGaps([...rs, res("G7", null, "2026-12-02", "2026-12-03")], today, 2).length, 0);
 });
 
 test("1泊だけ空いた夜の知らせ：「連泊の条件をゆるめる・少し下げると埋まりやすい」", () => {
-  const rs = [res("G1", "A", "2026-11-02", "2026-11-04"), res("G2", "A", "2026-11-05", "2026-11-07")];
+  const rs = [res("G1", "A", "2026-11-30", "2026-12-02"), res("G2", "A", "2026-12-03", "2026-12-05")];
   const items = pricingItems({ today, inn: innProfile, reservations: rs, lines, counter }).filter((x) => x.kind === "price_gap");
   assert.equal(items.length, 1);
   const it = items[0];
-  assert.equal(it.ref_key, "price_gap:A:2026-11-04");
-  assert.deepEqual(it.review, { room: "A", nights: ["2026-11-04"] });
+  assert.equal(it.ref_key, "price_gap:A:2026-12-02");
+  assert.deepEqual(it.review, { room: "A", nights: ["2026-12-02"] });
   const text = it.facts.map((f) => `${f.label}:${f.value}`).join("\n");
   assert.match(text, /連泊の条件（何泊から泊まれるか）をゆるめる・少し下げると埋まりやすい/);
   assert.match(text, /値段と条件を決めて予約サイトに入れるのはオーナー/);
 });
 
-test("見本の宿の知らせ：上げどき3枚（3連休・マラソン前の晩・年末年始）、1泊だけの空きは無し", () => {
+test("見本の宿の知らせ：上げどき4枚（3連休・マラソン前の晩・年末年始・成人の日の3連休）、1泊だけの空きは無し", () => {
   const items = demoItems();
-  assert.deepEqual(items.map((x) => x.ref_key), ["price_event:renkyu-2026-11-21", "price_event:aotai-2026", "price_event:renkyu-2026-12-29"]);
+  assert.deepEqual(items.map((x) => x.ref_key), ["price_event:renkyu-2026-11-21", "price_event:aotai-2026", "price_event:renkyu-2026-12-29", "price_event:renkyu-2027-01-09"]);
   for (const it of items) {
     assert.equal(it.kind, "price_event");
     assert.equal(it.can_ok, true);
@@ -190,7 +192,7 @@ test("清掃費が未設定なら、手取りの目安は出さずにそう書�
 test("巡回：値付けの材料を渡したときだけ、値付けの知らせが入る（今までの知らせは変わらない）", () => {
   assert.deepEqual(buildPatrolItems({ today }), []);
   const items = buildPatrolItems({ today, pricing: { today, inn: innProfile, reservations, lines, counter } });
-  assert.equal(items.filter((x) => x.kind === "price_event").length, 3);
+  assert.equal(items.filter((x) => x.kind === "price_event").length, 4);
 });
 
 test("「見直した／このまま」の記録：押したときに入っていた予約と、空いていた部屋×夜を残す", () => {

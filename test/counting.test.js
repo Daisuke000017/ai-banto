@@ -130,11 +130,13 @@ test("2部屋に同じ日の予約があっても1日（8/8はA室・B室とも�
   assert.equal(days([byId("R06"), byId("R07")]), 2);
 });
 
-test("180日カウンター（デモの今日＝2026-10-10）：使った29日＋予約11日＝40日、残り140日", () => {
+// 使った36日＝10/10より前の29日＋10/10〜11/6の7日（R14 2・R15 2・R16 2・R21 1）
+// 予約11日＝R21 2（11/7・11/8）＋R22 2＋R23 2＋R17 4（年末年始）＋R18 1（3/31。4/1の夜は次の年度）
+test("180日カウンター（見本の基準日＝2026-11-07）：使った36日＋予約11日＝47日、残り133日", () => {
   const c = dayCounter(stayNightRows(reservations), DEMO_TODAY, rules);
   assert.deepEqual(
     [c.fiscal_year, c.used_days, c.booked_days, c.total_days, c.remaining_days, c.level],
-    ["2026", 29, 11, 40, 140, "ok"],
+    ["2026", 36, 11, 47, 133, "ok"],
   );
 });
 
@@ -163,7 +165,8 @@ test("8-9月の報告：13日・15人・延べ41人、国籍不明2人（R12）"
   const rep = minpakuReport(reservations, "2026-08_09", DEMO_TODAY);
   assert.deepEqual([rep.stay_days, rep.guests, rep.guest_nights], [13, 15, 41]);
   assert.equal(rep.nationality.UNKNOWN, 2);
-  assert.equal(rep.days_left, 5);
+  assert.equal(rep.days_left, -23, "締切（10/15）は11/7から見て23日前に過ぎている");
+  assert.equal(minpakuReport(reservations, "2026-10_11", DEMO_TODAY).days_left, 38, "次の締切は12/15");
 });
 
 test("宿泊が0日の期間も、0のまま報告できる", () => {
@@ -186,10 +189,11 @@ test("おかしな予約（出発日が到着日より前・添い寝が子ど�
 });
 
 // ---- D1に入れるSQL ----
-test("D1用のSQL：予約20件・泊42行、名前はすべて架空", () => {
+// 泊49行＝もとの20件の42行＋R21 3泊＋R22 2泊＋R23 2泊
+test("D1用のSQL：予約23件・泊49行、名前はすべて架空", () => {
   const sql = buildSeedSql();
-  assert.equal((sql.match(/INSERT INTO reservations /g) ?? []).length, 20);
-  assert.equal((sql.match(/INSERT INTO stay_nights /g) ?? []).length, 42);
+  assert.equal((sql.match(/INSERT INTO reservations /g) ?? []).length, 23);
+  assert.equal((sql.match(/INSERT INTO stay_nights /g) ?? []).length, 49);
   assert.ok(reservations.every((r) => r.guest_name.startsWith("架空ゲスト")));
   assert.ok(sql.includes("しおさいの家（架空）"));
 });

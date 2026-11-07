@@ -10,23 +10,24 @@ const seed = reservations.map((r) => ({ room: "A", status: "confirmed", ...r }))
 const dates = (d) => d.items.map((i) => i.date);
 const res = (id, room, checkin_date, checkout_date, extra = {}) => ({ id, ota: "airbnb", room, checkin_date, checkout_date, status: "confirmed", ...extra });
 
-test("デモの台帳：今日から3週間に、10/12 と 10/26 の2日が出る", () => {
+test("デモの台帳：今日（11/7）から3週間に、11/9（R21）と 11/15（R22）の2日が出る", () => {
   const d = cleaningDays(seed, DEMO_TODAY, innProfile);
   assert.equal(d.days, CLEANING_DAYS);
-  assert.equal(d.from, "2026-10-10");
-  assert.equal(d.to, "2026-10-30");
-  assert.deepEqual(dates(d), ["2026-10-12", "2026-10-26"]);
-  assert.deepEqual(d.items.map((i) => i.reservation_id), ["R14", "R15"]);
+  assert.equal(d.from, "2026-11-07");
+  assert.equal(d.to, "2026-11-27");
+  // R23（11/29〜12/1）のチェックアウトは3週間の外。10月の R14・R15 は過去なので出ない
+  assert.deepEqual(dates(d), ["2026-11-09", "2026-11-15"]);
+  assert.deepEqual(d.items.map((i) => i.reservation_id), ["R21", "R22"]);
   assert.ok(d.items.every((i) => i.room === "A" && !i.turnover && !i.check_room));
 });
 
-test("キャンセルのメールを台帳に入れると、その日が清掃の予定から消える", () => {
-  const r15 = seed.find((r) => r.id === "R15");
-  const f = { ...emptyFields(), kind: "cancel", ota: r15.ota, reservation_no: r15.ota_reservation_no };
-  const l = ledgerChecks(f, { existing: r15 });
+test("キャンセルのメールを台帳に入れると、その日が清掃の予定から消える（見本のキャンセルメール＝R22）", () => {
+  const r22 = seed.find((r) => r.id === "R22");
+  const f = { ...emptyFields(), kind: "cancel", ota: r22.ota, reservation_no: r22.ota_reservation_no };
+  const l = ledgerChecks(f, { existing: r22 });
   assert.equal(l.blocked, false);
-  const after = seed.map((r) => (r.id === "R15" ? { ...r, ...l.after } : r));
-  assert.deepEqual(dates(cleaningDays(after, DEMO_TODAY, innProfile)), ["2026-10-12"]);
+  const after = seed.map((r) => (r.id === "R22" ? { ...r, ...l.after } : r));
+  assert.deepEqual(dates(cleaningDays(after, DEMO_TODAY, innProfile)), ["2026-11-09"]);
 });
 
 test("取り消した予約は数えない", () => {

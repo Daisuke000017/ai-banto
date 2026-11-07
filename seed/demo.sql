@@ -46,6 +46,9 @@ INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date,
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R16', 'airbnb', 'DEMO-0018', '架空ゲスト16', '2026-11-03', '2026-11-05', 2, 2, 0, 0, 'en', 'ota', 800, '{"US":2}', 36000, 'A', 'confirmed', 0, 0, NULL);
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R17', 'booking', 'DEMO-0019', '架空ゲスト17', '2026-12-29', '2027-01-02', 4, 2, 0, 0, 'ja', 'included', 1600, '{"JP":2}', 96000, 'A', 'confirmed', 0, 0, NULL);
 INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R18', 'airbnb', 'DEMO-0020', '架空ゲスト18', '2027-03-31', '2027-04-02', 2, 2, 1, 0, 'ja', 'ota', 1200, '{"JP":3}', 42000, 'A', 'confirmed', 0, 0, NULL);
+INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R21', 'booking', 'DEMO-0021', '架空ゲスト21', '2026-11-06', '2026-11-09', 3, 2, 1, 0, 'zh-TW', 'included', 1800, '{"TW":3}', 60000, 'A', 'confirmed', 0, 0, NULL);
+INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R22', 'airbnb', 'DEMO-0022', '架空ゲスト22', '2026-11-13', '2026-11-15', 2, 4, 0, 0, 'ja', 'ota', 1600, '{"JP":4}', 52000, 'A', 'confirmed', 0, 0, NULL);
+INSERT INTO reservations (id, ota, ota_reservation_no, guest_name, checkin_date, checkout_date, nights, adults, children, infants, language, tax_collection, lodging_tax_collected, nationalities_json, amount_gross, room, status, cosleep_free, cancel_fee_amount, guest_changes_json) VALUES ('R23', 'airbnb', 'DEMO-0023', '架空ゲスト23', '2026-11-29', '2026-12-01', 2, 2, 0, 0, 'en', 'ota', 800, '{"US":2}', 36000, 'A', 'confirmed', 0, 0, NULL);
 
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R01', '2026-04-29', '2026', 2);
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R01', '2026-04-30', '2026', 2);
@@ -89,5 +92,13 @@ INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R1
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R17', '2027-01-01', '2026', 2);
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R18', '2027-03-31', '2026', 3);
 INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R18', '2027-04-01', '2027', 3);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R21', '2026-11-06', '2026', 3);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R21', '2026-11-07', '2026', 3);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R21', '2026-11-08', '2026', 3);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R22', '2026-11-13', '2026', 4);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R22', '2026-11-14', '2026', 4);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R23', '2026-11-29', '2026', 2);
+INSERT INTO stay_nights (reservation_id, night, fiscal_year, guests) VALUES ('R23', '2026-11-30', '2026', 2);
 
 INSERT INTO cleaning_assignments (reservation_id, date, room, cleaner_id) VALUES ('R14', '2026-10-12', 'A', 1);
+INSERT INTO cleaning_assignments (reservation_id, date, room, cleaner_id) VALUES ('R21', '2026-11-09', 'A', 1);

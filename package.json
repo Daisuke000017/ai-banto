@@ -7,7 +7,7 @@
     "test": "node --test",
     "seed:build": "node scripts/build-seed.js",
     "db:reset": "npm run seed:build && npx -y wrangler@4 d1 migrations apply ai-banto --local && npx -y wrangler@4 d1 execute ai-banto --local --file seed/demo.sql && npx -y wrangler@4 d1 execute ai-banto --local --file seed/eval-results.sql",
-    "dev": "npx -y wrangler@4 dev --local --var DEMO_TODAY:2026-10-10"
+    "dev": "npx -y wrangler@4 dev --local --var DEMO_MODE:1"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0"

@@ -3,7 +3,7 @@
 // 採点カード A〜D（ガッツさんヒアリング用）もこの中に入っている：
 //   A＝R04（添い寝の子）／B＝R18（3月31日をまたぐ）／C＝R06（途中で1人増える）／D＝R08（キャンセル料あり）
 
-export const DEMO_TODAY = "2026-10-10";
+export const DEMO_TODAY = "2026-11-07";
 
 export const innProfile = {
   id: 1,
@@ -55,12 +55,15 @@ export const rooms = [
   { code: "B", name: "部屋B", sort_order: 2 },
 ];
 
-// 清掃の担当（架空の人。名前だけ）。10/12 は「さくら」さんに決めてあり、10/26 はまだ決めていない
+// 清掃の担当（架空の人。名前だけ）。10/12（R14）と 11/9（R21）は「さくら」さんに決めてあり、10/26（R15）と 11/15（R22）はまだ決めていない
 export const cleaners = [
   { id: 1, name: "さくら（架空）", sort_order: 1 },
   { id: 2, name: "みなと（架空）", sort_order: 2 },
 ];
-export const cleaningAssignments = [{ reservation_id: "R14", date: "2026-10-12", room: "A", cleaner_id: 1 }];
+export const cleaningAssignments = [
+  { reservation_id: "R14", date: "2026-10-12", room: "A", cleaner_id: 1 },
+  { reservation_id: "R21", date: "2026-11-09", room: "A", cleaner_id: 1 },
+];
 
 const g = (n) => `架空ゲスト${n}`;
 
@@ -100,7 +103,7 @@ export const reservations = [
   // 預かったか分からない予約（予約サイトの明細で確認が必要）
   { id: "R12", ota: "direct", checkin_date: "2026-09-26", checkout_date: "2026-09-27", adults: 2, language: "ja", tax_collection: "unknown", lodging_tax_collected: null, nationalities_json: null, amount_gross: 18000 },
 
-  // ---- 10月（デモの「今日」＝10/10） ----
+  // ---- 10月（前のデモの「今日」＝10/10 のころ。いまは過去の記録） ----
   { id: "R13", ota: "airbnb", checkin_date: "2026-10-02", checkout_date: "2026-10-04", adults: 2, language: "en", tax_collection: "ota", lodging_tax_collected: 800, nationalities_json: { FR: 2 }, amount_gross: 34000 },
   { id: "R14", ota: "booking", checkin_date: "2026-10-09", checkout_date: "2026-10-12", adults: 2, children: 1, language: "zh-TW", tax_collection: "included", lodging_tax_collected: 1800, nationalities_json: { TW: 3 }, amount_gross: 60000 },
   { id: "R15", ota: "airbnb", checkin_date: "2026-10-24", checkout_date: "2026-10-26", adults: 4, language: "ja", tax_collection: "ota", lodging_tax_collected: 1600, nationalities_json: { JP: 4 }, amount_gross: 52000 },
@@ -111,6 +114,15 @@ export const reservations = [
 
   // ---- カードB：3月31日の夜は2026年度、4月1日の夜は2027年度。大人2・子ども1・2泊＝1,200円 ----
   { id: "R18", ota: "airbnb", checkin_date: "2027-03-31", checkout_date: "2027-04-02", adults: 2, children: 1, language: "ja", tax_collection: "ota", lodging_tax_collected: 1200, nationalities_json: { JP: 3 }, amount_gross: 42000 },
+
+  // ---- 11月（デモの「今日」＝11/7）。予約番号（DEMO-0021〜）が今の番号とずれないよう、いちばん最後に足す ----
+  //   11/21〜23（3連休）は料金の「上げどき」の話に使うので空けておく
+  // 11/7 に泊まっているゲスト。11/9 の清掃は「さくら」さんに決めてある（R14 の役目）
+  { id: "R21", ota: "booking", checkin_date: "2026-11-06", checkout_date: "2026-11-09", adults: 2, children: 1, language: "zh-TW", tax_collection: "included", lodging_tax_collected: 1800, nationalities_json: { TW: 3 }, amount_gross: 60000 },
+  // 清掃の担当がまだ決まっていない予約。見本のキャンセルメールの宛て先（R15 の役目）
+  { id: "R22", ota: "airbnb", checkin_date: "2026-11-13", checkout_date: "2026-11-15", adults: 4, language: "ja", tax_collection: "ota", lodging_tax_collected: 1600, nationalities_json: { JP: 4 }, amount_gross: 52000 },
+  // 見本の予約変更メールの宛て先（R16 の役目）。11/27 到着の見本メール（2泊＝11/29 まで）と重ならない日にした
+  { id: "R23", ota: "airbnb", checkin_date: "2026-11-29", checkout_date: "2026-12-01", adults: 2, language: "en", tax_collection: "ota", lodging_tax_collected: 800, nationalities_json: { US: 2 }, amount_gross: 36000 },
 ].map((r, i) => ({
   ota_reservation_no: `DEMO-${String(i + 1).padStart(4, "0")}`,
   guest_name: g(r.id.replace("R", "")),

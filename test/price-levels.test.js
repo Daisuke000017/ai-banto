@@ -22,7 +22,7 @@ test("年末年始・お盆の夜を見分ける", () => {
 test("デモの宿：連休はレベル3、青島太平洋マラソンの前の晩はレベル3、年末年始はレベル4", () => {
   const plan = planLevels({ today, inn, reservations });
   const m = byNight(plan);
-  assert.equal(plan.from, "2026-10-17");
+  assert.equal(plan.from, "2026-11-14"); // 今日（11/7）の7日先から
   assert.equal(m.get("2026-11-21").level, 3);
   assert.equal(m.get("2026-11-22").level, 3);
   assert.equal(m.get("2026-11-22").gray, false);
@@ -37,16 +37,17 @@ test("デモの宿：連休はレベル3、青島太平洋マラソンの前の�
   assert.equal(m.get("2026-11-18").level, 2);
   assert.equal(m.get("2026-11-18").by, "program");
   // 7日より前は出さない
-  assert.equal(m.has("2026-10-16"), false);
+  assert.equal(m.has("2026-11-13"), false);
 });
 
 test("満室の夜は外す", () => {
-  const extra = { id: "X1", room: "B", status: "confirmed", checkin_date: "2026-10-24", checkout_date: "2026-10-26", adults: 2 };
+  // 11/29〜12/1 は R23 が A 室に入っている。B 室も埋めると、その2晩は満室
+  const extra = { id: "X1", room: "B", status: "confirmed", checkin_date: "2026-11-29", checkout_date: "2026-12-01", adults: 2 };
   const plan = planLevels({ today, inn, reservations: [...reservations, extra] });
   const m = byNight(plan);
-  assert.equal(m.has("2026-10-24"), false);
-  assert.equal(m.has("2026-10-25"), false);
-  assert.equal(m.has("2026-10-26"), true);
+  assert.equal(m.has("2026-11-29"), false);
+  assert.equal(m.has("2026-11-30"), false);
+  assert.equal(m.has("2026-12-01"), true);
   assert.equal(plan.full_nights, 2);
 });
 
@@ -88,15 +89,15 @@ test("行事の候補の泊まる夜：1日なら前の晩と当日の晩、何�
 });
 
 test("オーナーが OK した行事の候補は、上げどきとレベル3の夜になる", () => {
-  const cand = { id: 7, name: "見本の花火大会", start_day: "2026-11-07", end_day: "2026-11-07", place: "宮崎市", found_by: "sample" };
+  const cand = { id: 7, name: "見本の花火大会", start_day: "2026-12-05", end_day: "2026-12-05", place: "宮崎市", found_by: "sample" };
   const ev = eventNights(today, [cand]).find((e) => e.id === "cand-7");
   assert.ok(ev);
-  assert.deepEqual(ev.nights, ["2026-11-06", "2026-11-07"]);
+  assert.deepEqual(ev.nights, ["2026-12-04", "2026-12-05"]);
   assert.equal(ev.sources[0].name, "デモの見本（実在しない行事）");
 
   const m = byNight(planLevels({ today, inn, reservations, events: [cand] }));
-  assert.equal(m.get("2026-11-06").level, 3);
-  assert.equal(m.get("2026-11-06").event_id, "cand-7");
+  assert.equal(m.get("2026-12-04").level, 3);
+  assert.equal(m.get("2026-12-04").event_id, "cand-7");
 
   const items = pricingItems({ today, inn, reservations, events: [cand] });
   const it = items.find((x) => x.ref_key?.includes("cand-7"));

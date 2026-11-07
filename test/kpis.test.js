@@ -65,16 +65,28 @@ test("8月：埋まった割合は 8泊÷(2部屋×31日)＝12.9%、1部屋1泊�
   assert.equal(d.adr, 21925);
 });
 
-test("10月：今日（10/10）より前の夜は泊まり済み、それ以降はこれから。明細がまだ無い手数料は割合で見込む", () => {
+test("10月：今日（11/7）から見ると、10月の夜はすべて泊まり済み。明細がまだ無い手数料は割合で見込む", () => {
   const d = month("2026-10");
   assert.equal(d.sales, 144200);
-  assert.equal(d.sales_stayed, 53400);
-  assert.equal(d.sales_upcoming, 90800);
+  assert.equal(d.sales_stayed, 144200);
+  assert.equal(d.sales_upcoming, 0);
   assert.equal(d.room_nights, 7);
   assert.equal(d.fee_actual, 0);
   assert.equal(d.fee_estimate, 11580); // Airbnb 86,000×3% ＋ Booking.com 60,000×15%
   assert.equal(d.net, 132620);
   assert.deepEqual(d.fee_rates, { airbnb: 3, booking: 15 });
+});
+
+test("11月：今日（11/7）より前の夜は泊まり済み、それ以降はこれから", () => {
+  const d = month("2026-11");
+  // R16 36,000＋R21 58,200（60,000から料金に含む宿泊税1,800を引く）＋R22 52,000＋R23 36,000
+  assert.equal(d.sales, 182200);
+  assert.equal(d.sales_stayed, 55400); // R16 の2泊＋R21 の11/6の1泊（19,400）
+  assert.equal(d.sales_upcoming, 126800);
+  assert.equal(d.room_nights, 9);
+  assert.equal(d.fee_actual, 0);
+  assert.equal(d.fee_estimate, 12720); // Airbnb 124,000×3% ＋ Booking.com 60,000×15%
+  assert.equal(d.net, 169480);
 });
 
 test("画面用：宿泊税（預かったお金）は売上と別に出す。前の月の数字も付ける", () => {

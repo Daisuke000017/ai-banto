@@ -124,7 +124,7 @@ test("通り道：9月分の申告書。人泊・税額と、オーナー確認�
       VALUES ('T2', 'arrival', 'ja', '【オーナー確認】宿泊税の預かり方'),
              ('T3', 'arrival', 'ja', '【オーナー確認】宿泊税の預かり方');
   `);
-  const env = { DB, DEMO_TODAY: "2026-10-10" };
+  const env = { DB, DEMO_TODAY: "2026-11-07" };
   const res = await call(env, "http://localhost:8787", "/api/tax/return?month=2026-09");
   assert.equal(res.status, 200);
   const d = await res.json();

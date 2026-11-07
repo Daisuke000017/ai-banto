@@ -1,5 +1,6 @@
 // オーナーのログインの自動テスト。使い方：npm test
 // D1 の代わりに、メモリの SQLite（node:sqlite）に migrations/ を全部入れて試す
+import { todayJst } from "../src/lib/dates.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -65,7 +66,7 @@ let HASH;
 const hash = async () => (HASH ??= await hashPassword(PASSWORD));
 const envWith = async (opts = {}) => ({
   DB: fakeD1(),
-  DEMO_TODAY: "2026-10-10",
+  DEMO_TODAY: "2026-11-07",
   ...(opts.noHash ? {} : { OWNER_PASSWORD_HASH: await hash() }),
   ...(opts.noTurnstile ? {} : { TURNSTILE_SECRET: TS_SECRET, TURNSTILE_SITE_KEY: TS_SITE_KEY }),
 });
@@ -390,7 +391,21 @@ test("ロボット除けの部品を読んでよいのは、ログイン画面�
   assert.equal(home.headers.get("referrer-policy"), "no-referrer");
 });
 
-test("本番の設定（wrangler.jsonc）に、デモの「今日」を入れていない", () => {
+test("本番の設定（wrangler.jsonc）に、デモの「今日」もデモの合図も入れていない", () => {
   const conf = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   assert.ok(!conf.includes("DEMO_TODAY"));
+  assert.ok(!conf.includes("DEMO_MODE"), "実際の宿に見本が出ないよう、デモの合図は公開のときに --var で付ける");
+});
+
+test("デモの合図（DEMO_MODE）だけなら、見本は出せて、日付は本当の今日のまま", async () => {
+  const { DEMO_TODAY: _pinned, ...base } = await envWith();
+  const env = { ...base, DEMO_MODE: "1" };
+  const { cookie } = await login(env);
+  assert.equal((await call(env, REMOTE, "/api/booking-emails/samples", { cookie })).status, 200);
+  assert.equal((await call(env, REMOTE, "/api/statements/samples", { cookie })).status, 200);
+  const counter = await call(env, REMOTE, "/api/minpaku/counter", { cookie });
+  assert.equal((await counter.json()).today, todayJst(), "日付は止めない");
+  const plain = { ...base };
+  const again = await login(plain);
+  assert.equal((await call(plain, REMOTE, "/api/booking-emails/samples", { cookie: again.cookie })).status, 404, "合図が無ければ見本は出さない");
 });

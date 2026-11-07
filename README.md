@@ -182,7 +182,7 @@ AIの係が本当に役に立っているかを、**自作の例題40件**（す
 1. オーナーの合言葉を決めて Secrets に置く（`node scripts/hash-password.js | npx wrangler secret put OWNER_PASSWORD_HASH`）。合言葉の計算に時間がかかるため、Workers は有料プランにした
 2. ログイン画面に Cloudflare Turnstile（ロボット除け）を付けた（多くの接続元から合言葉を試されると、オーナーも15分入れなくなるため）。鍵は `TURNSTILE_SITE_KEY`・`TURNSTILE_SECRET` として Secrets に置く。合言葉を変えたら、ログイン中の札を消す（`DELETE FROM owner_sessions`）
 3. 本番のデータベース（D1）を作り、表とデモ用データを入れる。秘密の値（APIキー・暗証番号）は Secrets に置く
-4. 公開（`npx wrangler deploy --var DEMO_TODAY:2026-10-10`）。実際の宿で使うときは `--var` を付けない（デモの「今日」が止まったままになるため）
+4. 公開（`npx wrangler deploy --var DEMO_MODE:1`）。見本のメール・明細を出す合図で、日付は本当の今日のまま。実際の宿で使うときは `--var` を付けない（見本が出てしまうため）
 
 ---
 

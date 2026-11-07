@@ -1,11 +1,11 @@
 {
   // AI番頭（Cloudflare Workers）。公開は社長の指示があったときだけ（2026-11-06 初回公開：ai-banto.daisuke-inoue.workers.dev）。
-  // デモ公開は `npx wrangler deploy --var DEMO_TODAY:2026-10-10`（架空データのデモ用。実際の宿で使うときは --var を付けない）
+  // デモ公開は `npx wrangler deploy --var DEMO_MODE:1`（架空データのデモ用。見本を出す合図で、日付は本当の今日のまま。実際の宿で使うときは --var を付けない）
   "name": "ai-banto",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
-  // デモの「今日」（DEMO_TODAY）はここに書かない。本番に乗ると時計が止まるため（ゾロ審査 2026-11-05）
-  // 手元では npm run dev が --var DEMO_TODAY:2026-10-10 を付けて起動する
+  // デモの「今日」（DEMO_TODAY）とデモの合図（DEMO_MODE）はここに書かない。本番に乗ると時計が止まり、実際の宿に見本が出るため（ゾロ審査 2026-11-05）
+  // 手元では npm run dev が --var DEMO_MODE:1 を付けて起動する（日付を止めて見たいときだけ --var DEMO_TODAY:2026-11-07 を足す）
   // 画面（public/）。先に Worker を通して、手元以外からの表示を止め・安全のヘッダーを付ける
   "assets": {
     "directory": "public",

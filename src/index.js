@@ -233,6 +233,9 @@ function newToken() {
 
 // デモの日付があれば、その日の朝9時を「いま」とみなす
 const nowIso = (env) => (env.DEMO_TODAY ? `${env.DEMO_TODAY}T09:00:00+09:00` : new Date().toISOString());
+// デモかどうか（見本のメール・明細・行事、試験用のメールの相手、時刻の切り替えを出してよいか）。
+// DEMO_MODE はデモの合図だけで、日付は本当の今日のまま。DEMO_TODAY は日付も止める（録画の撮り直しなど）
+const isDemo = (env) => Boolean(env.DEMO_MODE || env.DEMO_TODAY);
 
 async function handleGet(url, env, today) {
   const p = url.pathname;
@@ -610,7 +613,7 @@ async function handleGuestBus(url, env, today, token) {
   // 「いま」は日本時間の時計。デモのときだけ ?time=HH:MM で時刻を変えて見せられる
   const clock = new Date(Date.now() + 9 * 3600 * 1000);
   let minutes = clock.getUTCHours() * 60 + clock.getUTCMinutes();
-  if (env.DEMO_TODAY) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
+  if (isDemo(env)) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
   return json(busBoard({ date: today, minutes, lang }), 200, GUEST_HEADERS);
 }
 
@@ -666,7 +669,7 @@ async function handleGuestAsk(request, url, env, today, token) {
   }
   const clock = new Date(Date.now() + 9 * 3600 * 1000);
   let minutes = clock.getUTCHours() * 60 + clock.getUTCMinutes();
-  if (env.DEMO_TODAY) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
+  if (isDemo(env)) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
   const taxi = parseJsonObject((await loadInn(env)).taxi_info_json);
   const res = await answerAsk({
     db: env.DB,
@@ -688,7 +691,7 @@ async function handleGuestAsk(request, url, env, today, token) {
 // 予約メール（M17）：読む
 async function handleBookingEmailGet(url, env) {
   if (url.pathname === "/api/booking-emails/samples") {
-    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    if (!isDemo(env)) throw new HttpError(404, "見本はデモのときだけです");
     return json({ samples: sampleEmails.map((e) => ({ key: e.key, label: e.label, subject: e.subject, body: e.body })) });
   }
   if (url.pathname === "/api/booking-emails") {
@@ -739,7 +742,7 @@ async function handleBookingEmailPost(request, url, env, today) {
 async function handleMoneyGet(url, env) {
   const p = url.pathname;
   if (p === "/api/statements/samples") {
-    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    if (!isDemo(env)) throw new HttpError(404, "見本はデモのときだけです");
     return json({ samples: sampleStatements.map((s) => ({ key: s.key, kind: s.kind, label: s.label, filename: s.filename, text: s.text })) });
   }
   if (p === "/api/statements") return json({ statements: await listStatements(env.DB) });
@@ -884,7 +887,7 @@ async function handleDecisionPost(request, url, env, ctx) {
 // メール受け取り（M19）：決めた相手（MAIL_ALLOW_FROM）からの予約メールだけ読む。本文は伏せてから保存する
 // デモのときだけ、手元の試験用に「ota-demo.example」（だれも持てない試験用の名前）からのメールも受け取る
 const DEMO_MAIL_DOMAIN = "ota-demo.example";
-const mailAllow = (env) => [env.MAIL_ALLOW_FROM, env.DEMO_TODAY ? DEMO_MAIL_DOMAIN : ""].filter(Boolean).join(",");
+const mailAllow = (env) => [env.MAIL_ALLOW_FROM, isDemo(env) ? DEMO_MAIL_DOMAIN : ""].filter(Boolean).join(",");
 
 async function receiveEmail(message, env) {
   const allow = mailAllow(env);
@@ -1292,7 +1295,7 @@ async function priceView(env, today) {
   const input = await priceInputs(env);
   const plan = planLevels({ today, ...input });
   const [latest, candidates] = await Promise.all([latestLevelPlan(env.DB), listEventCandidates(env.DB)]);
-  return { plan, latest, candidates, ai_ready: aiClient(env) != null, demo: Boolean(env.DEMO_TODAY) };
+  return { plan, latest, candidates, ai_ready: aiClient(env) != null, demo: isDemo(env) };
 }
 
 async function handlePriceGet(url, env, today) {
@@ -1321,7 +1324,7 @@ async function handlePricePost(request, url, env, today) {
     return json({ found, ...(await priceView(env, today)) });
   }
   if (p === "/api/price-events/samples") {
-    if (!env.DEMO_TODAY) throw new HttpError(404, "見本はデモのときだけです");
+    if (!isDemo(env)) throw new HttpError(404, "見本はデモのときだけです");
     const sample = await insertSampleEvents(env.DB, today);
     return json({ sample, ...(await priceView(env, today)) });
   }
