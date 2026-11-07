@@ -59,6 +59,17 @@
         </div>
       </article>
 
+      <!-- 番頭に聞く：ホームは1行だけ。聞きたいときだけ専用の画面を開く（ホームにチャット欄を置かない） -->
+      <section class="home-group" aria-label="番頭に聞く">
+        <ul class="menu">
+        <li><a class="row" href="#ask">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>
+          <span class="row-text"><span class="row-name">番頭に聞く</span><span class="row-fact">台帳の数字だけで答えます</span></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </a></li>
+        </ul>
+      </section>
+
       <div class="home-grid">
         <section class="home-group" aria-labelledby="home-week">
           <h3 class="home-h" id="home-week">きょう・今週</h3>
@@ -115,6 +126,22 @@
       <p class="home-foot"><a href="#settings">宿と部屋の設定</a><a href="#eval">チームの成績</a></p>
     </section>
 
+    <!-- 番頭に聞く：台帳の数字だけで短く答える。決めるのはオーナー。答えは入力欄のすぐ下、例はその下 -->
+    <section id="panel-ask" class="panel" aria-label="番頭に聞く" hidden>
+      <h2 class="h2">番頭に聞く</h2>
+      <div class="ask-card">
+        <p class="ask-lead">台帳の数字だけで答えます。わからないことは「わかりません」と言います。決めるのはあなたです。</p>
+        <form class="ask-form" id="ask-form">
+          <label class="visually-hidden" for="ask-text">番頭への質問</label>
+          <input class="text-in ask-in" id="ask-text" type="text" maxlength="200" autocomplete="off" placeholder="ここに質問を書く">
+          <button class="btn primary ask-send" id="ask-send" type="submit">聞く</button>
+        </form>
+        <div class="ask-log" id="ask-log" aria-live="polite"></div>
+        <p class="ask-ex-h" id="ask-ex-h">例（押すと、そのまま聞きます）</p>
+        <ul class="ask-chips" id="ask-chips" aria-labelledby="ask-ex-h"></ul>
+        <p class="ask-left" id="ask-left">1日20回まで聞けます</p>
+      </div>
+    </section>
     <section id="panel-decisions" class="panel" aria-label="決裁箱" hidden></section>
     <section id="panel-kpi" class="panel" aria-label="今月の数字" hidden></section>
     <section id="panel-tax" class="panel" aria-label="宿泊税" hidden></section>

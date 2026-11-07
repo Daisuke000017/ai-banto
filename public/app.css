@@ -247,6 +247,36 @@ main { max-width: 960px; margin: 0 auto; padding: var(--s4); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .panel.home { gap: var(--s5); }
 .home-group { display: grid; gap: var(--s3); }
+/* 番頭に聞く */
+/* PCで横に伸びすぎないよう、カードは640pxで止める（11/7 見た目審査 10） */
+.ask-card { max-width: 640px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); display: grid; gap: var(--s3); }
+.ask-lead { font-size: 16px; line-height: 1.7; color: var(--ink-sub); word-break: auto-phrase; text-wrap: pretty; }
+/* スマホは質問の欄を横いっぱい、「聞く」はその下（長い質問も見直せるように。11/7 見た目審査 18）。広い画面だけ横並び */
+.ask-form { display: grid; gap: var(--s2); scroll-margin-top: var(--s4); }
+.ask-form .ask-in { margin-top: 0; min-width: 0; font-size: 17px; }
+.ask-send { width: 100%; }
+@media (min-width: 600px) {
+  .ask-form { grid-template-columns: 1fr auto; }
+  .ask-send { width: auto; min-width: 5.5em; }
+}
+/* 答え：入力欄のすぐ下に、新しいものを上に。吹き出しにはしない */
+.ask-log { display: grid; gap: var(--s2); }
+.ask-log:empty { display: none; }
+.ask-item { background: var(--bg); border-radius: var(--r); padding: var(--s3) var(--s4); display: grid; gap: var(--s2); }
+.ask-q { font-size: 16px; color: var(--ink-sub); }
+/* 答えは文節で折る。keep-all も試したが「。」だけが次の行に落ちたので auto-phrase のまま（11/7 見た目審査 15） */
+.ask-a { font-size: 18px; line-height: 1.75; color: var(--ink); font-weight: 700; word-break: auto-phrase; overflow-wrap: anywhere; text-wrap: pretty; }
+.ask-item.is-unknown .ask-a { font-weight: 400; }
+.ask-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); font-size: 15px; color: var(--ink-sub); }
+.ask-meta a { display: inline-flex; align-items: center; min-height: 56px; color: var(--action); font-weight: 700; text-underline-offset: 3px; }
+.ask-tag { display: inline-block; padding: 0 var(--s2); border-radius: 4px; background: var(--soft); color: var(--ink-sub); font-size: 14px; }
+.ask-item.is-unknown .ask-tag { background: var(--warn-bg); color: var(--warn); }
+/* 例：押すとそのまま聞く。60代の方でも押しやすい、横いっぱいの56px */
+.ask-ex-h { font-size: 15px; color: var(--ink-sub); margin-top: var(--s1); }
+.ask-chips { display: grid; gap: var(--s2); }
+.ask-chip { width: 100%; min-height: 56px; padding: 0 var(--s4); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font-size: 17px; text-align: left; cursor: pointer; }
+.ask-chip:hover { border-color: var(--action); }
+.ask-left { font-size: 15px; color: var(--ink-sub); }
 .home-h { font-size: 15px; font-weight: 700; color: var(--ink-sub); line-height: 1.5; }
 .home-grid { display: grid; gap: var(--s5); }
 @media (min-width: 900px) {

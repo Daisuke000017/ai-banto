@@ -84,6 +84,63 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
+// ---- 番頭に聞く（専用の画面 #ask。ホームは1行だけ）----
+// 答えは番頭（AI）が、プログラムの数えた数字の中から選んで書く。画面は textContent だけで出す
+const ASK_EXAMPLES = ["今月の手取りはいくら？", "180日まであと何日？", "次の清掃はいつ？"];
+// 答えの出どころ → 確かめる画面（ハッシュと画面の名前）
+const ASK_DEST = {
+  今月の数字: ["kpi", "今月の数字"],
+  民泊の日数: ["minpaku", "民泊の手続き"],
+  定期報告: ["minpaku", "民泊の手続き"],
+  予約: ["calendar", "宿泊カレンダー"],
+  清掃: ["cleaning", "清掃の日・担当"],
+  確認待ち: ["decisions", "決裁箱"],
+};
+
+function setupAsk() {
+  const form = $("ask-form");
+  if (!form) return;
+  const input = $("ask-text");
+  const send = $("ask-send");
+  const log = $("ask-log");
+  $("ask-chips").replaceChildren(...ASK_EXAMPLES.map((q) => el("li", {}, [
+    el("button", { cls: "ask-chip", text: q, attrs: { type: "button" }, on: { click: () => { input.value = q; form.requestSubmit(); } } }),
+  ])));
+  let busy = false;
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const q = input.value.trim();
+    if (!q || busy) return;
+    busy = true;
+    send.disabled = true;
+    send.textContent = "数えています…";
+    const item = el("div", { cls: "ask-item" }, [el("p", { cls: "ask-q", text: `あなた：${q}` }), loading("番頭が台帳を見ています")]);
+    log.prepend(item);
+    while (log.children.length > 3) log.lastElementChild.remove();
+    // 例を押したときも、答えが見える所まで画面を戻す
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    try {
+      const r = await api("/api/ask-banto", { method: "POST", body: { text: q } });
+      if (!r.known) item.classList.add("is-unknown");
+      const dest = ASK_DEST[r.source];
+      const meta = el("p", { cls: "ask-meta" }, [
+        el("span", { cls: "ask-tag", text: r.answer_source !== "ai" ? "お知らせ" : r.known ? "台帳の数字から" : "台帳にない" }),
+        dest ? el("a", { text: `「${dest[1]}」で確かめる`, attrs: { href: `#${dest[0]}` } }) : null,
+      ]);
+      if (r.remaining != null) $("ask-left").textContent = `きょうはあと${r.remaining}回聞けます`;
+      item.replaceChildren(item.firstChild, el("p", { cls: "ask-a", text: r.answer }), meta);
+      input.value = "";
+    } catch (err) {
+      item.classList.add("is-unknown");
+      item.replaceChildren(item.firstChild, el("p", { cls: "ask-a", text: errorText(err) }));
+    } finally {
+      busy = false;
+      send.disabled = false;
+      send.textContent = "聞く";
+    }
+  });
+}
+
 // ログアウト（ログインを使っているときだけ、下の注意書きの横に出す）
 async function setupLogout() {
   const s = await api("/api/session").catch(() => null);
@@ -3788,8 +3845,8 @@ function watchDecisions() {
 // ---- ホームと画面の切り替え ----
 // アドレスの「#kpi」などで画面を切り替える（ブラウザの戻るボタンでもホームに戻れる）
 
-const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, taxreturn: showTaxReturn, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings, ledger: showLedger };
-const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", taxreturn: "宿泊税の申告書", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定", ledger: "予約の台帳" };
+const SHOW = { decisions: showDecisions, kpi: showKpi, tax: showTax, taxreturn: showTaxReturn, minpaku: showMinpaku, calendar: showCalendar, cleaning: showCleaning, guest: showGuest, mail: showMail, money: showMoney, eval: showEval, settings: showSettings, ledger: showLedger, ask: () => {} };
+const TITLE = { decisions: "決裁箱", kpi: "今月の数字", tax: "宿泊税", taxreturn: "宿泊税の申告書", minpaku: "民泊の手続き", calendar: "宿泊カレンダー", cleaning: "清掃が必要な日", guest: "ゲスト連絡", mail: "予約メール", money: "お金の照合", eval: "チームの成績", settings: "宿と部屋の設定", ledger: "予約の台帳", ask: "番頭に聞く" };
 
 function show(name) {
   if (!(name in SHOW)) name = "home";
@@ -3946,6 +4003,7 @@ async function start() {
   pullTeam();
   loadDrill();
   setupLogout();
+  setupAsk();
 }
 
 start();

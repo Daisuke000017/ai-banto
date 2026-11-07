@@ -68,6 +68,7 @@ import { busBoard, parseClock } from "./lib/bus.js";
 import { answerAsk, ASK_MAX_CHARS, BUTTON_DESTS } from "./lib/ask.js";
 import { kpiView } from "./lib/kpis.js";
 import { cleaningDays, cleaningWindow } from "./lib/cleaning.js";
+import { answerOwner, buildFacts, OWNER_ASK_MAX_CHARS } from "./lib/banto-chat.js";
 import { checkAssignment, checkCleanerName, cleanerNameKey, markCleaners, MAX_CLEANERS, withAssignments } from "./lib/cleaners.js";
 import { stayCalendar } from "./lib/calendar.js";
 import { checkRoomName, MAX_ROOMS, nextRoomCode, roomCodes } from "./lib/rooms.js";
@@ -100,7 +101,7 @@ import {
   OWNER_CHECK,
 } from "./lib/arrival.js";
 import { generateEvacuationDraft, guestDrillView } from "./lib/drill.js";
-import { DecisionError, decideOk, decideReview, listDecisions, PRICE_EVENTS_SQL, PRICE_RES_SQL, runPatrol } from "./lib/patrol.js";
+import { DecisionError, decideOk, decideReview, listDecisions, nearestReportPeriod, PRICE_EVENTS_SQL, PRICE_RES_SQL, runPatrol } from "./lib/patrol.js";
 import { planLevels } from "./lib/price-levels.js";
 import { approveLevelPlan, latestLevelPlan, saveLevelPlan, suggestLevels } from "./lib/price-level-ai.js";
 import { decideEventCandidate, insertSampleEvents, listEventCandidates, searchEvents } from "./lib/price-events-ai.js";
@@ -611,6 +612,39 @@ async function handleGuestBus(url, env, today, token) {
   let minutes = clock.getUTCHours() * 60 + clock.getUTCMinutes();
   if (env.DEMO_TODAY) minutes = parseClock(url.searchParams.get("time")) ?? minutes;
   return json(busBoard({ date: today, minutes, lang }), 200, GUEST_HEADERS);
+}
+
+// 番頭に聞く（オーナー専用）：数字はプログラムが出し、AIはその中から選んで短く答えるだけ。質問は保存しない
+async function handleOwnerAsk(request, url, env, today) {
+  const body = await readJsonBody(request, url);
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!text) throw new HttpError(400, "質問を書いてください");
+  if ([...text].length > OWNER_ASK_MAX_CHARS) throw new HttpError(400, `質問は${OWNER_ASK_MAX_CHARS}文字までです`);
+  const inn = await loadInn(env);
+  const rules = rulesFromInnProfile(inn);
+  const [res, lines, nights, decisions] = await Promise.all([
+    env.DB.prepare(`SELECT ${RES_COLUMNS}, room, amount_gross, ota_reservation_no FROM reservations ORDER BY checkin_date, id`).all(),
+    env.DB.prepare("SELECT ota, ota_reservation_no, line_type, gross, fee FROM ota_lines").all(),
+    env.DB.prepare("SELECT night, fiscal_year FROM stay_nights").all(),
+    env.DB.prepare(
+      "SELECT title FROM decisions WHERE status = 'open' ORDER BY CASE level WHEN 'urgent' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END, id LIMIT 10",
+    ).all(),
+  ]);
+  const reservations = res.results ?? [];
+  const rooms = Number(inn.rooms);
+  const view = kpiView({ reservations, lines: lines.results ?? [], rooms, month: monthOf(today), today, rules });
+  const facts = buildFacts({
+    today,
+    reservations,
+    lines: lines.results ?? [],
+    rooms,
+    lodgingTax: view.lodging_tax ?? null,
+    counter: dayCounter(nights.results ?? [], today, rules),
+    cleaning: cleaningDays(reservations.filter((r) => r.status === "confirmed"), today, inn),
+    decisions: (decisions.results ?? []).map((d) => d.title),
+    reports: nearestReportPeriod(today).map((p) => minpakuReport(reservations, p, today)),
+  });
+  return json(await answerOwner({ db: env.DB, client: aiClient(env), question: text, facts }));
 }
 
 // ゲスト画面：行って戻れるか（M14）。時刻はプログラムが選び、AIは行き先の読み取りと説明の文だけ
@@ -1371,6 +1405,8 @@ export default {
       } else if (request.method === "POST" && url.pathname.startsWith("/api/booking-emails")) {
         const res = await handleBookingEmailPost(request, url, env, today);
         if (res) return res;
+      } else if (request.method === "POST" && url.pathname === "/api/ask-banto") {
+        return await handleOwnerAsk(request, url, env, today);
       } else if (request.method === "POST" && (url.pathname === "/api/patrol" || url.pathname.startsWith("/api/decisions/"))) {
         const res = await handleDecisionPost(request, url, env, ctx);
         if (res) return res;
