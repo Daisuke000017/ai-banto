@@ -27,6 +27,8 @@ function renderRobot() {
     sitekey: siteKey,
     action: "login",
     language: "ja",
+    // 部品のふつうの形は幅300px。幅の狭いスマホ（320px）でははみ出すので、小さい形（縦長）にする
+    size: robotBox.clientWidth < 300 ? "compact" : "normal",
     callback: (token) => {
       robotToken = token;
     },
