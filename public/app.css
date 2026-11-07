@@ -1057,3 +1057,26 @@ body.drill::after {
 .mb-clean { align-self: center; }
 .cal-legend .sw.bar.b { background: var(--chart-2); }
 .cal-legend .sw.bar.c { background: var(--chart-3); }
+
+/* 宿の設定：4列のマス。ラベル・欄・補足の3段を、横の欄どうしでそろえる（ラベルが2行になっても欄がずれない） */
+.set-group { font-size: 16px; font-weight: 700; margin-top: var(--s5); color: var(--ink); }
+.set-group:first-of-type { margin-top: var(--s3); }
+.set-grid { display: grid; grid-template-columns: 1fr; column-gap: var(--s4); row-gap: var(--s3); margin-top: var(--s2); }
+.set-grid.is-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.set-field { display: grid; grid-template-rows: auto auto auto; align-content: start; min-width: 0; }
+@supports (grid-template-rows: subgrid) {
+  .set-grid { grid-auto-rows: auto; }
+  .set-field { grid-row: span 3; grid-template-rows: subgrid; row-gap: 0; }
+}
+.set-field label { display: flex; align-items: baseline; gap: var(--s2); align-self: end; }
+.set-field .text-in { margin-top: var(--s1); min-height: 52px; }
+.set-field .opt { font-size: 13px; color: var(--ink-sub); border: 1px solid var(--line); border-radius: 999px; padding: 0 var(--s2); line-height: 1.6; }
+.set-field .hint { margin-top: var(--s1); font-size: 14px; line-height: 1.5; color: var(--ink-sub); }
+/* 「円」は欄の中の右端に置く（どの欄も同じ幅にそろえる） */
+.unit-in { position: relative; }
+.unit-in .text-in { text-align: right; padding-right: calc(var(--s3) + 1.6em); font-variant-numeric: tabular-nums; }
+.unit-in span { position: absolute; right: var(--s3); bottom: 0; height: 52px; display: flex; align-items: center; color: var(--ink-sub); pointer-events: none; }
+@media (min-width: 720px) {
+  .set-grid, .set-grid.is-pair { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .set-field.is-wide { grid-column: span 2; }
+}

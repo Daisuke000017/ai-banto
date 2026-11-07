@@ -1996,29 +1996,50 @@ function calDetail(d, day) {
 // ---- 宿と部屋の設定：オーナーが入れる。AIは使わない ----
 // 届出番号は定期報告のCSVに、清掃の時間はカレンダーと清掃の画面に、部屋はカレンダー・清掃・値付けの知らせに使う
 
-const INN_FORM = [
-  ["name", "宿の名前", "text", { maxlength: "40", required: true }],
-  ["address", "住所（任意）", "text", { maxlength: "100" }],
-  ["notification_no", "届出番号（定期報告のCSVに入ります）", "text", { maxlength: "30", inputmode: "latin", placeholder: "例：M000000000" }],
-  ["cleaning_checkout_time", "チェックアウトの時刻", "time", {}],
-  ["cleaning_checkin_time", "チェックインの時刻", "time", {}],
-  ["cleaning_fee", "清掃1回の費用（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
-  ["min_price", "1泊のいちばん安い値段（円・任意）", "text", { inputmode: "numeric", maxlength: "9" }],
-  ["price_l1", "料金のレベル1（円・空きやすい日）", "text", { inputmode: "numeric", maxlength: "9" }],
-  ["price_l2", "料金のレベル2（円・ふだんの日）", "text", { inputmode: "numeric", maxlength: "9" }],
-  ["price_l3", "料金のレベル3（円・混む日）", "text", { inputmode: "numeric", maxlength: "9" }],
-  ["price_l4", "料金のレベル4（円・年末年始・お盆）", "text", { inputmode: "numeric", maxlength: "9" }],
+// 欄は4列のマスに並べる（スマホは1列。時刻と金額は2列）。ラベルは短く、補足は欄の下の小さな字にする
+// [キー, ラベル, 種類, 入力の属性, { wide: 2マス使う, opt: 任意, unit: 単位, hint: 補足 }]
+const yenIn = { inputmode: "numeric", maxlength: "9" };
+const INN_GROUPS = [
+  {
+    title: "宿のこと",
+    rows: [
+      ["name", "宿の名前", "text", { maxlength: "40", required: true }],
+      ["address", "住所", "text", { maxlength: "100" }, { wide: true, opt: true }],
+      ["notification_no", "届出番号", "text", { maxlength: "30", inputmode: "latin", placeholder: "例：M000000000" }, { hint: "定期報告のCSVに入ります" }],
+    ],
+  },
+  {
+    title: "時刻と費用",
+    pair: true,
+    rows: [
+      ["cleaning_checkin_time", "チェックイン", "time", {}],
+      ["cleaning_checkout_time", "チェックアウト", "time", {}],
+      ["cleaning_fee", "清掃1回の費用", "text", yenIn, { opt: true, unit: "円" }],
+      ["min_price", "1泊の最低価格", "text", yenIn, { opt: true, unit: "円" }],
+    ],
+  },
+  {
+    title: "料金のレベル（1泊の値段）",
+    pair: true,
+    rows: [
+      ["price_l1", "レベル1", "text", yenIn, { unit: "円", hint: "空きやすい日" }],
+      ["price_l2", "レベル2", "text", yenIn, { unit: "円", hint: "ふだんの日" }],
+      ["price_l3", "レベル3", "text", yenIn, { unit: "円", hint: "混む日" }],
+      ["price_l4", "レベル4", "text", yenIn, { unit: "円", hint: "年末年始・お盆" }],
+    ],
+  },
 ];
 
 // 宿泊税の申告書（宮崎市 様式第10号）に書くこと。どれも任意。空なら申告書のその欄は空けて出す
-const INN_TAX_FORM = [
-  ["collector_address", "特別徴収義務者の住所（所在地）", "text", { maxlength: "100", autocomplete: "off" }],
-  ["collector_name", "特別徴収義務者の氏名（名称）", "text", { maxlength: "60", autocomplete: "off" }],
-  ["corporate_no", "法人番号（13けた・個人の方は空のまま）", "text", { inputmode: "numeric", maxlength: "20", autocomplete: "off" }],
-  ["inn_phone", "宿の電話番号", "tel", { maxlength: "20", placeholder: "例：0985-00-0000", autocomplete: "off" }],
-  ["facility_no", "施設番号（市から知らされた番号）", "text", { maxlength: "20", inputmode: "latin", autocomplete: "off" }],
-  ["contact_name", "担当者", "text", { maxlength: "30", autocomplete: "off" }],
-  ["contact_phone", "担当者の電話番号", "tel", { maxlength: "20", placeholder: "例：090-0000-0000", autocomplete: "off" }],
+const off = { autocomplete: "off" };
+const INN_TAX_ROWS = [
+  ["collector_address", "特別徴収義務者の住所", "text", { maxlength: "100", ...off }, { wide: true, hint: "所在地" }],
+  ["collector_name", "特別徴収義務者の氏名", "text", { maxlength: "60", ...off }, { hint: "名称" }],
+  ["corporate_no", "法人番号", "text", { inputmode: "numeric", maxlength: "20", ...off }, { hint: "13けた。個人の方は空のまま" }],
+  ["facility_no", "施設番号", "text", { maxlength: "20", inputmode: "latin", ...off }, { hint: "市から知らされた番号" }],
+  ["inn_phone", "宿の電話番号", "tel", { maxlength: "20", placeholder: "例：0985-00-0000", ...off }],
+  ["contact_name", "担当者", "text", { maxlength: "30", ...off }],
+  ["contact_phone", "担当者の電話番号", "tel", { maxlength: "20", placeholder: "例：090-0000-0000", ...off }],
 ];
 
 async function showSettings() {
@@ -2045,12 +2066,21 @@ function renderSettings(d) {
 function innCard(d) {
   const inputs = {};
   const problems = el("div", { attrs: { "aria-live": "polite" } });
-  const row = ([k, label, type, extra]) => {
-    const i = el("input", { cls: "text-in", attrs: { id: `set-${k}`, type, ...extra } });
+  const row = ([k, label, type, extra, o = {}]) => {
+    const id = `set-${k}`;
+    const i = el("input", { cls: "text-in", attrs: { id, type, ...extra, ...(o.hint ? { "aria-describedby": `${id}-hint` } : {}) } });
     i.value = d.inn[k] ?? "";
     inputs[k] = i;
-    return el("div", { cls: "field" }, [el("label", { text: label, attrs: { for: `set-${k}` } }), i]);
+    return el("div", { cls: `field set-field${o.wide ? " is-wide" : ""}` }, [
+      el("label", { attrs: { for: id } }, [label, o.opt ? el("span", { cls: "opt", text: "任意" }) : null]),
+      o.unit ? el("div", { cls: "unit-in" }, [i, el("span", { text: o.unit, attrs: { "aria-hidden": "true" } })]) : i,
+      o.hint ? el("p", { cls: "hint", text: o.hint, attrs: { id: `${id}-hint` } }) : el("span"),
+    ]);
   };
+  const group = (title, rows, pair = false) => [
+    el("h3", { cls: "set-group", text: title }),
+    el("div", { cls: `set-grid${pair ? " is-pair" : ""}` }, rows.map(row)),
+  ];
   const save = async () => {
     // 変えた項目だけ送る
     const patch = {};
@@ -2070,10 +2100,10 @@ function innCard(d) {
   };
   return el("article", { cls: "card" }, [
     el("h2", { text: "宿の設定" }),
-    el("div", { cls: "fields" }, INN_FORM.map(row)),
+    ...INN_GROUPS.flatMap((g) => group(g.title, g.rows, g.pair)),
     el("h3", { cls: "set-sub", text: "宿泊税の申告書に書くこと（任意）" }),
     el("p", { cls: "sub", text: "宿泊税の画面の「申告書をつくる」で、宮崎市の様式に入ります。空の欄は、申告書でも空けたままにします（手で書けます）" }),
-    el("div", { cls: "fields" }, INN_TAX_FORM.map(row)),
+    el("div", { cls: "set-grid" }, INN_TAX_ROWS.map(row)),
     problems,
     el("div", { cls: "btns" }, [btn("保存する", save, "btn primary")]),
   ]);
@@ -3711,6 +3741,8 @@ function byOf(d) {
 function dxCredits(d) {
   const by = byOf(d);
   const usesAi = by.some(([, ...who]) => who.some((w) => w in TEAM_NAME));
+  // プログラムだけで数えたカードには行を出さない（画面の上の帯で一度だけ言っている）。AIが関わったカードだけ、どの係かを出す
+  if (!usesAi) return null;
   const parts = [];
   const said = [];
   for (const [verb, ...who] of by) {
@@ -3720,12 +3752,11 @@ function dxCredits(d) {
     const one = [el("span", { text: verb })];
     for (const w of names) one.push(w in TEAM_NAME ? el("span", { cls: "role-pill", text: TEAM_NAME[w] }) : el("span", { text: w }));
     // AIを使っていないカードは「プログラム（AIなし）」と言い切る
-    if (prog) one.push(el("span", { text: names.length ? "とプログラム" : usesAi ? "プログラム" : "プログラム（AIなし）" }));
+    if (prog) one.push(el("span", { text: names.length ? "とプログラム" : "プログラム" }));
     parts.push(el("span", { cls: "credit" }, one));
     said.push(`${verb} ${[...names.map((w) => TEAM_NAME[w] ?? w), ...(prog ? ["プログラム"] : [])].join("と")}`);
   }
-  parts.push(el("span", { cls: "credit" }, [el("span", { text: "決めるのは" }), el("span", { cls: "role-pill", text: "あなた" })]));
-  return el("p", { cls: "credits", attrs: { "aria-label": `${said.join("、")}。決めるのはあなたです` } }, parts);
+  return el("p", { cls: "credits", attrs: { "aria-label": said.join("、") } }, parts);
 }
 
 // 日付・金額・「○部屋」は途中で改行しない（「12月／12日」「約／14,500円」を防ぐ）
