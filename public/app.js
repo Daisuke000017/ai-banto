@@ -1536,6 +1536,9 @@ const CAL_VIEWS = [
   ["bar", "週で見る"],
   ["month", "月で見る"],
 ];
+// 広い画面（PC）。月で見るを最初に出し、月の表にも週と同じ文字入りの帯を出す（スマホは今まで通り）
+const CAL_WIDE = typeof matchMedia === "function" ? matchMedia("(min-width: 900px)") : { matches: false, addEventListener() {} };
+let calLast = null;
 const dayNo = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
 const sameRoom = (a, b) => (a ?? null) === (b ?? null);
 
@@ -1561,6 +1564,8 @@ function calBookings(d) {
 function calCard(d) {
   const s = d.summary;
   const view = state.calView === "month" ? "month" : "bar";
+  const wide = view === "month" && CAL_WIDE.matches;
+  calLast = d;
   const books = calBookings(d);
   const hasUnknown = books.some((b) => !b.r.room);
   const hasOver = books.some((b) => b.over);
@@ -1619,8 +1624,8 @@ function calCard(d) {
     show();
   };
   card.append(
-    view === "bar" ? calTimeline(d, books, pickDay, pickStay) : calMonthGrid(d, pickDay, hasUnknown),
-    calLegend(view, { hasUnknown, hasOver, hasTurn }),
+    view === "bar" ? calTimeline(d, books, pickDay, pickStay) : wide ? calMonthBars(d, books, pickDay, pickStay) : calMonthGrid(d, pickDay, hasUnknown),
+    calLegend(wide ? "wide" : view, { hasUnknown, hasOver, hasTurn }),
     totals,
     detail,
   );
@@ -1654,7 +1659,16 @@ function cleanWhoLine(r) {
 function calLegend(view, f) {
   const sw = (cls) => el("span", { cls: `sw ${cls}`, attrs: { "aria-hidden": "true" } });
   const items =
-    view === "bar"
+    view === "wide"
+      ? [
+          ...CAL_LIST.map((room) => el("li", {}, [sw(`bar ${roomTone(CAL_LIST, room)}`), `${roomName(room)}の泊まり（入る日の午後〜出る日の午前）`])),
+          f.hasUnknown ? el("li", {}, [sw("bar unknown"), "部屋が決まっていない予約"]) : null,
+          f.hasOver ? el("li", {}, [sw("bar over"), "同じ部屋で重なっている予約"]) : null,
+          el("li", {}, [sw("clean"), "清掃の日（チェックアウトの日）"]),
+          el("li", {}, [sw("clean done"), "清掃の担当が決まった日"]),
+          f.hasTurn ? el("li", {}, [sw("clean turn"), "入れ替え（同じ日に次の人が入る）"]) : null,
+        ]
+      : view === "bar"
       ? [
           el("li", {}, [sw("bar"), "泊まり（入る日の午後〜出る日の午前）"]),
           f.hasUnknown ? el("li", {}, [sw("bar unknown"), "部屋が決まっていない予約"]) : null,
@@ -1786,6 +1800,82 @@ function calBlock(d, books, start, n, first, last, pickDay, pickStay) {
       `${colOf(no)} / span 2`,
       String(cleanRow),
     );
+  }
+  return grid;
+}
+
+// 月で見る（PC）：7列の表の1週ごとに、部屋の行と清掃の行を持つ。帯は週で見ると同じ（入る日の午後〜出る日の午前、「部屋A 2泊」の文字、押すと予約の中身）
+function calMonthBars(d, books, pickDay, pickStay) {
+  const first = dayNo(d.days[0].date);
+  const last = dayNo(d.days[d.days.length - 1].date);
+  const byNo = new Map(d.days.map((x) => [dayNo(x.date), x]));
+  const keys = [...CAL_LIST];
+  if (books.some((b) => !b.r.room)) keys.push("none");
+  const laneCount = (key) => Math.max(1, ...books.filter((b) => b.key === key).map((b) => b.lanes()));
+  const laneOf = new Map();
+  let lanesTotal = 0;
+  for (const key of keys) {
+    laneOf.set(key, lanesTotal);
+    lanesTotal += laneCount(key);
+  }
+  const perWeek = lanesTotal + 2; // 日付の行＋部屋の行＋清掃の行
+  const weeks = Math.ceil((d.first_weekday + d.days.length) / 7);
+  const grid = el("div", { cls: "mb", attrs: { role: "group", "aria-label": `${jpMonth(d.month)}の宿泊カレンダー。帯を押すと予約の中身、日を押すとその日の部屋の様子が下に出ます` } });
+  grid.style.gridTemplateRows = ["auto", ...Array.from({ length: weeks }, () => `30px repeat(${lanesTotal}, 34px) 34px`)].join(" ");
+  const put = (node, col, row) => {
+    node.style.gridColumn = col;
+    node.style.gridRow = row;
+    grid.append(node);
+    return node;
+  };
+  WD.forEach((w, i) => put(el("span", { cls: `cal-wd${i === 0 ? " is-sun" : i === 6 ? " is-sat" : ""}`, text: w, attrs: { "aria-hidden": "true" } }), `${2 * i + 1} / span 2`, "1"));
+
+  for (let w = 0; w < weeks; w++) {
+    const top = 2 + w * perWeek;
+    const start = first - d.first_weekday + 7 * w;
+    const lo = Math.max(start, first);
+    const hi = Math.min(start + 6, last);
+    const colOf = (no) => 1 + 2 * (no - start);
+    // 日のマス（押すとその日の様子）
+    for (let no = lo; no <= hi; no++) {
+      const day = byNo.get(no);
+      const wd = no - start;
+      const cls = ["mb-day", wd === 0 ? "is-sun" : wd === 6 ? "is-sat" : "", day.is_today ? "is-today" : "", day.overlap_rooms.length ? "is-overlap" : ""].filter(Boolean).join(" ");
+      put(
+        el("button", { cls, attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": calDayLabel(day), "aria-current": day.is_today ? "date" : null }, on: { click: pickDay(day) } }, [el("span", { cls: "n", text: Number(day.date.slice(8)) })]),
+        `${colOf(no)} / span 2`,
+        `${top} / span ${perWeek}`,
+      );
+    }
+    // 泊まりの帯
+    for (const b of books) {
+      const ci = dayNo(b.r.checkin_date);
+      const co = dayNo(b.r.checkout_date);
+      if (co < lo || ci > hi) continue;
+      const s = ci >= lo ? colOf(ci) + 1 : colOf(lo);
+      const e = co <= hi ? colOf(co) + 1 : colOf(hi) + 2;
+      const cls = ["tl-bar", "mb-bar", b.r.room ? `room-${roomTone(CAL_LIST, b.r.room)}` : "", !b.r.room ? "unknown" : "", b.over ? "over" : "", ci < lo ? "cont-l" : "", co > hi ? "cont-r" : ""].filter(Boolean).join(" ");
+      const label = `${roomName(b.r.room)}：${OTA[b.r.ota] ?? b.r.ota ?? "予約"}、${jpDate(b.r.checkin_date, false)}から${jpDate(b.r.checkout_date, false)}まで${b.r.nights}泊（${PEOPLE(b.r)}）${b.over ? "。重なりあり" : ""}`;
+      // 1日以上の長さなら「部屋A 2泊」。半日だけの切れ端は、入る日のほうにだけ「2泊」（出る日の切れ端は文字なし）
+      const text = e - s >= 2 ? `${b.r.room ? roomName(b.r.room) : "部屋未定"} ${b.r.nights}泊` : ci >= lo ? `${b.r.nights}泊` : "";
+      // title：PCでマウスを乗せると中身が出る
+      put(el("button", { cls, text, attrs: { type: "button", "data-pick": `s:${b.r.reservation_id}`, "aria-label": label, title: label }, on: { click: pickStay(b) } }), `${s} / ${e}`, String(top + 1 + laneOf.get(b.key) + b.lane));
+    }
+    // 清掃の印：チェックアウトの日
+    for (let no = lo; no <= hi; no++) {
+      const day = byNo.get(no);
+      if (!day.departures.length) continue;
+      const turn = day.departures.some((r) => r.room && day.stays.some((st) => st.arrives && st.room === r.room));
+      put(
+        el("button", {
+          cls: `tl-clean mb-clean${turn ? " turn" : ""}${cleanDone(day) ? " done" : ""}`,
+          attrs: { type: "button", "data-pick": `d:${day.date}`, "aria-label": `${jpDate(day.date)}：清掃${turn ? "（入れ替え）" : ""}。チェックアウト${day.departures.length}件。${cleanWhoLabel(day)}` },
+          on: { click: pickDay(day) },
+        }),
+        `${colOf(no)} / span 2`,
+        String(top + 1 + lanesTotal),
+      );
+    }
   }
   return grid;
 }
@@ -3991,7 +4081,12 @@ async function start() {
   state.calMonth = month;
   state.calDay = null;
   state.calStay = null;
-  state.calView = "bar";
+  state.calView = CAL_WIDE.matches ? "month" : "bar";
+  // 画面の幅がPCとスマホの境目をまたいだら、カレンダーを描き直す（月の表の形が変わるため）
+  CAL_WIDE.addEventListener("change", () => {
+    const card = document.querySelector(".cal-card");
+    if (card && calLast && state.calView === "month") card.replaceWith(calCard(calLast));
+  });
   state.taxMonth = addMonths(month, -1);
   const curStart = Number(month.slice(5, 7)) % 2 === 1 ? addMonths(month, -1) : month;
   const prevStart = addMonths(curStart, -2);

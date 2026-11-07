@@ -1026,3 +1026,34 @@ body.drill::after {
 .level-list li .pill { margin-left: var(--s2); }
 .level-list .sub { margin-top: var(--s1); }
 .level-list a { overflow-wrap: anywhere; }
+
+/* 月で見る（PC）：7列×1日2マス（午前・午後）の表。1週ごとに「日付の行・部屋の行・清掃の行」。帯は週で見ると同じ見た目 */
+.mb { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); column-gap: 0; position: relative; }
+.mb .cal-wd { padding: 0 0 4px; }
+.mb .cal-wd.is-sun { color: var(--danger); }
+.mb .cal-wd.is-sat { color: var(--action); }
+.mb-day {
+  z-index: 1;
+  min-width: 0;
+  margin: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 3px 6px;
+  display: flex;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.mb-day .n { font-size: 16px; font-weight: 700; line-height: 1.5; min-width: 28px; text-align: center; }
+.mb-day.is-sun .n { color: var(--danger); }
+.mb-day.is-sat .n { color: var(--action); }
+.mb-day.is-today .n { background: var(--ink); color: #fff; border-radius: 999px; }
+.mb-day.is-overlap { border-color: var(--danger); }
+.mb-day[aria-pressed="true"] { outline: 3px solid var(--action); outline-offset: -1px; border-color: var(--action); }
+.mb-day:focus-visible { outline: 3px solid var(--action); outline-offset: 1px; }
+.mb-bar { align-self: center; margin: 0 1px; }
+.mb-clean { align-self: center; }
+.cal-legend .sw.bar.b { background: var(--chart-2); }
+.cal-legend .sw.bar.c { background: var(--chart-3); }
